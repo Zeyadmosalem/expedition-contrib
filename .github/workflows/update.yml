@@ -1,0 +1,50 @@
+name: Update contribution animation
+
+on:
+  schedule:
+    - cron: "23 4 * * *"        # daily, 04:23 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "contrib_blaster/**"
+      - ".github/workflows/update.yml"
+
+permissions:
+  contents: write                # push the SVGs to the `output` branch
+
+concurrency:
+  group: expedition-contrib
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test
+        run: python -m unittest discover -s tests -v
+
+      - name: Render from the GitHub contribution calendar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # set a repository variable CONTRIB_USER to draw someone other than the repo owner
+          CONTRIB_USER: ${{ vars.CONTRIB_USER || github.repository_owner }}
+        run: python -m contrib_blaster --user "$CONTRIB_USER" --out dist
+
+      - name: Publish to the output branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          git init -q -b output
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add expedition-contrib.svg expedition-contrib-dark.svg
+          git commit -q -m "Update contribution animation ($(date -u +%F))"
+          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" output
