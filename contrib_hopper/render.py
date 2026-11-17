@@ -132,7 +132,8 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
     grow(cx - 1, top - flag.h + 3, cx - 1 + flag.w, top + 3)
 
     # ---------- hero: hx = ground motion, hy = arc, ps/pj = pose ---------------
-    stand, jump = px.hero_poses(character.colors(), character.head_raster())
+    poses = px.hero_poses(character.colors(), character.head_raster())
+    stand, jump = poses.stand, poses.jump
     fw, fh = stand.w, stand.h
     sx, sy = ground(START_W, LANE_D)
 
