@@ -64,12 +64,43 @@ LEGS = [
      "...kk.......kk..",
      "..bbb.......bbb."],
 ]
+# Mid-jump: legs kicked out, feet tucked one row up (same 4-row frame as LEGS)
+JUMP_LEGS = [
+    "...kkkk..kkkk...",
+    "..kkk......kkk..",
+    "..bbb......bbb..",
+    "................",
+]
 GUN = [
     "..gggggggG",
     "GGgggggggg",
     "gg.gg.....",
     "g.........",
 ]
+# Spinning coin popped by a landing: face-on, then edge-on. Same gold in both themes.
+COIN_COLORS = {'y': (250, 196, 60), 'Y': (255, 240, 160), 'o': (196, 124, 28)}
+COIN = [
+    [".yyyy.",
+     "yYYyyo",
+     "yYyyyo",
+     "yYyyyo",
+     "yYyyyo",
+     "yyyyoo",
+     ".oooo."],
+    ["..yo..",
+     "..Yo..",
+     "..Yo..",
+     "..yo..",
+     "..yo..",
+     "..yo..",
+     "..oo.."],
+]
+# Finish flag on the busiest day: white pole, pennant in the theme's flag colour.
+FLAG = [
+    "Wppp.",
+    "Wpppp",
+    "Wppp.",
+] + ["W...."] * 9
 
 Color = tuple  # (r, g, b)
 
@@ -138,21 +169,37 @@ def grid(rows: list[str], colors: dict = COLORS, outline: bool = False) -> Raste
     return r.outline() if outline else r
 
 
+def _hero(colors: dict, head: Raster, legs: list[str]) -> Raster:
+    """Head on the suit (with the chest light) on the given legs, outlined."""
+    body = grid(BODY, colors)
+    leg = grid(legs, colors)
+    width = max(head.w, 16) + 2
+    height = head.h + len(BODY) + len(legs) - 1
+    canvas = Raster(width, height)
+    canvas.blit(leg, (width - 16) // 2, head.h + len(BODY) - 1)
+    canvas.blit(body, (width - 16) // 2, head.h - 1)
+    canvas.blit(head, (width - head.w) // 2, 0)
+    return canvas.outline()
+
+
 def hero_frames(colors: dict = COLORS, head: Raster | None = None) -> list[Raster]:
     """Four walk frames: skull (or custom) head on the suit with the chest light."""
     head = head or grid(SKULL, outline=True)
-    body = grid(BODY, colors)
-    frames = []
-    for legs in LEGS:
-        leg = grid(legs, colors)
-        width = max(head.w, 16) + 2
-        height = head.h + len(BODY) + len(legs) - 1
-        canvas = Raster(width, height)
-        canvas.blit(leg, (width - 16) // 2, head.h + len(BODY) - 1)
-        canvas.blit(body, (width - 16) // 2, head.h - 1)
-        canvas.blit(head, (width - head.w) // 2, 0)
-        frames.append(canvas.outline())
-    return frames
+    return [_hero(colors, head, legs) for legs in LEGS]
+
+
+def hero_poses(colors: dict = COLORS, head: Raster | None = None) -> tuple[Raster, Raster]:
+    """(stand, jump): same size, so they can be swapped in place."""
+    head = head or grid(SKULL, outline=True)
+    return _hero(colors, head, LEGS[0]), _hero(colors, head, JUMP_LEGS)
+
+
+def coin(frame: int) -> Raster:
+    return grid(COIN[frame], COIN_COLORS, outline=True)
+
+
+def flag(pennant: Color) -> Raster:
+    return grid(FLAG, {'W': COLORS['W'], 'p': tuple(pennant)}, outline=True)
 
 
 def gun(colors: dict = COLORS) -> Raster:
@@ -192,3 +239,9 @@ def iso_block(height: int, top: Color, left: Color, right: Color,
     for x, y in top_row.items():                  # bright upper rim, like Expedition
         r.set(x + 1, y + 1, edge)
     return r.outline() if outline else r
+
+
+def lit_top(top: Color) -> Raster:
+    """Only the top diamond (with its bright rim) of an iso_block, in the same frame,
+    so it can be laid over any block at the block's own x/y to light it up."""
+    return iso_block(0, top, top, top, outline=False)
