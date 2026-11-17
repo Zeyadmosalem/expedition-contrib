@@ -63,7 +63,7 @@ gun = "#787e92"     # gun
   `pip install pillow`), then commit just `character.png`:
 
   ```bash
-  python -m contrib_blaster.character my-photo.jpg character.png
+  python -m contrib_hopper.character my-photo.jpg character.png
   ```
 
   Then set `head = "character.png"`.
@@ -89,14 +89,14 @@ happens, re-enable the workflow from the Actions tab.
 ## Run it locally
 
 ```bash
-python -m contrib_blaster --user Zeyadmosalem --input tests/fixtures/calendar.json --out preview
+python -m contrib_hopper --user Zeyadmosalem --input tests/fixtures/calendar.json --out preview
 ```
 
 To render from live data, put a token in the environment. The token is only sent in the API
 request's `Authorization` header and is never written to disk:
 
 ```bash
-GITHUB_TOKEN=$(gh auth token) python -m contrib_blaster --user Zeyadmosalem --out dist
+GITHUB_TOKEN=$(gh auth token) python -m contrib_hopper --user Zeyadmosalem --out dist
 ```
 
 Open `preview/index.html` through any static server, for example `python -m http.server`, to see
@@ -112,8 +112,8 @@ python -m unittest discover -s tests -v
 
 | Path | What it does |
 | --- | --- |
-| `contrib_blaster/contributions.py` | GraphQL query, response parsing, weekday rows and levels |
-| `contrib_blaster/pixels.py` | Pixel rasters: skull hero, gun, isometric blocks (lit top plus two shaded faces) |
-| `contrib_blaster/render.py` | Scene layout, shot timeline and the animated SVG |
-| `contrib_blaster/character.py` | Hero settings from `character.toml`, and picture-to-pixel-head conversion |
+| `contrib_hopper/contributions.py` | GraphQL query, response parsing, weekday rows and levels |
+| `contrib_hopper/pixels.py` | Pixel rasters: skull hero, gun, isometric blocks (lit top plus two shaded faces) |
+| `contrib_hopper/render.py` | Scene layout, shot timeline and the animated SVG |
+| `contrib_hopper/character.py` | Hero settings from `character.toml`, and picture-to-pixel-head conversion |
 | `tests/` | Fixture calendar and tests for parsing, the SVG structure and the timeline |

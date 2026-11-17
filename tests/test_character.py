@@ -8,8 +8,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest import mock
 
-from contrib_blaster import character as C, contributions, pixels as px, render as R
-from contrib_blaster.__main__ import OUTPUTS, main
+from contrib_hopper import character as C, contributions, pixels as px, render as R
+from contrib_hopper.__main__ import OUTPUTS, main
 
 FIXTURE = Path(__file__).parent / 'fixtures' / 'calendar.json'
 SVG = '{http://www.w3.org/2000/svg}'

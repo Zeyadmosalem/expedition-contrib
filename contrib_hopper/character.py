@@ -12,7 +12,7 @@ centred square crop, shrunk to a 16 px round head, posterized to 4 levels per
 channel, and given the 1 px dark outline. Reading pictures needs Pillow; the
 default skull needs nothing beyond the standard library.
 
-    python -m contrib_blaster.character photo.jpg character.png
+    python -m contrib_hopper.character photo.jpg character.png
 
 saves just that tiny pixel head, so the original photo never has to be
 committed to a public repo.
@@ -148,7 +148,7 @@ def save_head(head: px.Raster, out: str | Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 2:
-        print('usage: python -m contrib_blaster.character PICTURE OUT.png', file=sys.stderr)
+        print('usage: python -m contrib_hopper.character PICTURE OUT.png', file=sys.stderr)
         return 2
     save_head(head_from_image(args[0]), args[1])
     print(f'{args[1]}: {HEAD_SIZE + 2}x{HEAD_SIZE + 2} pixel head. Set head = "{Path(args[1]).name}" '

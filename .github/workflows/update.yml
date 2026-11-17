@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "contrib_blaster/**"
+      - "contrib_hopper/**"
       - ".github/workflows/update.yml"
       - "character.toml"
       - "*.png"
@@ -43,7 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # set a repository variable CONTRIB_USER to draw someone other than the repo owner
           CONTRIB_USER: ${{ vars.CONTRIB_USER || github.repository_owner }}
-        run: python -m contrib_blaster --user "$CONTRIB_USER" --out dist
+        run: python -m contrib_hopper --user "$CONTRIB_USER" --out dist
 
       - name: Publish to the output branch
         env:

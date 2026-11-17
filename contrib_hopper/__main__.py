@@ -1,4 +1,4 @@
-"""CLI: python -m contrib_blaster --user LOGIN --out dist [--input calendar.json]
+"""CLI: python -m contrib_hopper --user LOGIN --out dist [--input calendar.json]
 
 Without --input the calendar is fetched from the GitHub GraphQL API using the
 token in $GITHUB_TOKEN (or $GH_TOKEN). The token is never written anywhere.
@@ -19,7 +19,7 @@ DEFAULT_CHARACTER = 'character.toml'
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog='contrib_blaster', description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(prog='contrib_hopper', description=__doc__.splitlines()[0])
     ap.add_argument('--user', default=os.environ.get('GITHUB_REPOSITORY_OWNER', ''),
                     help='GitHub login (default: $GITHUB_REPOSITORY_OWNER)')
     ap.add_argument('--input', help='read a saved GraphQL response instead of calling the API')
