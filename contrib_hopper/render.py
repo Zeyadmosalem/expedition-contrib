@@ -2,8 +2,8 @@
 
 Layout: every day of the last year is an isometric floor tile; active days are
 raised blocks (busier = taller and brighter). Weeks run down-right, weekdays
-run up-right. The skull hero hops across the year, one hop per week onto the
-week's tallest block (route.py works out where and when). A landed block
+run up-right. The skull hero hops onto each busy week's tallest block, and hops down,
+slides (and naps on long gaps) across empty weeks (route.py works out where and when). A landed block
 squashes, pops a coin and lights up, and the rest of its week bounces. After
 the last week a flag pops up on the busiest day, the hero does a victory hop
 and warps out, the lights fade and the loop restarts.
@@ -20,7 +20,7 @@ from xml.sax.saxutils import escape
 from . import pixels as px
 from .character import Character
 from .contributions import Calendar
-from .route import HEIGHTS, INTRO, LANE_D, START_W, ground, lift, plan, tile_xy
+from .route import HEIGHTS, INTRO, LANE_D, START_W, Hop, Slide, ground, lift, plan, tile_xy
 from .theme import palettes
 
 __all__ = ['THEMES', 'HEIGHTS', 'ground', 'plan', 'render', 'tile_xy']
@@ -32,6 +32,9 @@ COIN, COIN_RISE = 0.6, 16        # coin flight time (s) and height (px)
 COIN_LIFT = 36                  # coin starts this far above the block top: clear of the hero's head
 EASE_OUT = 'cubic-bezier(.33,.66,.66,1)'     # take-off -> apex
 EASE_IN = 'cubic-bezier(.33,0,.66,.33)'      # apex -> landing
+PUFF_TIME = 0.4                          # dust puff: rise 3 px and fade, seconds
+ZEE_TIME, ZEE_GAP, ZEES = 0.9, 0.35, 3   # nap: each Z rises and fades; three, this far apart
+POSES = ('ps', 'pj', 'pl', 'pz')         # stand, jump, slide, sleep
 
 THEMES = palettes()              # default preset's {'dark': ..., 'light': ...}; see theme.py
 
@@ -78,6 +81,7 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
     defs.append(f'<g id="n0">{px.coin(0).paths()}</g><g id="n1">{px.coin(1).paths()}</g>')
     flag = px.flag(th['flag'])
     defs.append(f'<g id="flag">{flag.paths()}</g>')
+    defs.append(f'<g id="zz">{px.zee(th["text"]).paths()}</g><g id="pf">{px.puff(th["sub"]).paths()}</g>')
 
     # ---------- floor and catwalk (static) ---------------------------------
     tiles = [(d.week, d.weekday, 'f') for d in cal.days]
@@ -131,10 +135,10 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
     fx_svg.append(f'<use class="fg" href="#flag" x="{_num(cx - 1)}" y="{_num(top - flag.h + 3)}"/>')
     grow(cx - 1, top - flag.h + 3, cx - 1 + flag.w, top + 3)
 
-    # ---------- hero: hx = ground motion, hy = arc, ps/pj = pose ---------------
+    # ---------- hero: hx = ground motion, hy = arc, ps/pj/pl/pz = pose ----------
     poses = px.hero_poses(character.colors(), character.head_raster())
-    stand, jump = poses.stand, poses.jump
-    fw, fh = stand.w, stand.h
+    fw, fh = poses.stand.w, poses.stand.h
+    zw, zh = poses.sleep.w, poses.sleep.h
     sx, sy = ground(START_W, LANE_D)
 
     def box(gx, gy, up):
@@ -147,27 +151,62 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
         return 'none' if up == 0 else f'translateY(-{_num(up)}px)'
 
     hx, hy = ['0%{transform:none}'], ['0%{transform:none}']
-    ps, pj = ['0%{opacity:1}'], ['0%{opacity:0}']
+    pose_kf = {name: [f'0%{{opacity:{1 if name == "ps" else 0}}}'] for name in POSES}
+    current = 'ps'
+
+    def show(t, name):
+        nonlocal current
+        if name != current:
+            pose_kf[current].append(f'{pct(t)}%{{opacity:0}}')
+            pose_kf[name].append(f'{pct(t)}%{{opacity:1}}')
+            current = name
+
     pos, up = (0.0, 0.0), 0
     box(sx, sy, 0)
-    for hop in (*tl.hops, tl.victory):
-        gx, gy = ground(hop.week, hop.weekday)
-        nxt = (gx - sx, gy - sy)
-        mid = (hop.takeoff + hop.land) / 2
-        hx.append(f'{pct(hop.takeoff)}%{{transform:{move(*pos)}}}{pct(hop.land)}%{{transform:{move(*nxt)}}}')
-        hy.append(f'{pct(hop.takeoff)}%{{transform:{rise(up)};animation-timing-function:{EASE_OUT}}}'
-                  f'{pct(mid)}%{{transform:{rise(hop.apex)};animation-timing-function:{EASE_IN}}}'
-                  f'{pct(hop.land)}%{{transform:{rise(lift(hop.level))}}}')
-        ps.append(f'{pct(hop.takeoff)}%{{opacity:0}}{pct(hop.land)}%{{opacity:1}}')
-        pj.append(f'{pct(hop.takeoff)}%{{opacity:1}}{pct(hop.land)}%{{opacity:0}}')
-        box(gx, gy, hop.apex)
-        pos, up = nxt, lift(hop.level)
+    for m in (*tl.moves, tl.victory):
+        if isinstance(m, Hop):
+            gx, gy = ground(m.week, m.weekday)
+            nxt = (gx - sx, gy - sy)
+            mid = (m.takeoff + m.land) / 2
+            hx.append(f'{pct(m.takeoff)}%{{transform:{move(*pos)}}}{pct(m.land)}%{{transform:{move(*nxt)}}}')
+            hy.append(f'{pct(m.takeoff)}%{{transform:{rise(up)};animation-timing-function:{EASE_OUT}}}'
+                      f'{pct(mid)}%{{transform:{rise(m.apex)};animation-timing-function:{EASE_IN}}}'
+                      f'{pct(m.land)}%{{transform:{rise(lift(m.level))}}}')
+            show(m.takeoff, 'pj')
+            show(m.land, 'ps')
+            box(gx, gy, m.apex)
+            pos, up = nxt, lift(m.level)
+        elif isinstance(m, Slide):
+            gx, gy = ground(m.week, m.weekday)
+            nxt = (gx - sx, gy - sy)
+            hx.append(f'{pct(m.start)}%{{transform:{move(*pos)}}}{pct(m.end)}%{{transform:{move(*nxt)}}}')
+            show(m.start, 'pl')
+            show(m.end, 'ps')
+            weeks = m.week - m.from_week
+            for i in range(1, weeks + 1):           # a puff of dust at each tile reached
+                f = i / weeks
+                dx_, dy_ = ground(m.from_week + f * weeks, m.from_weekday + f * (m.weekday - m.from_weekday))
+                fx_svg.append(f'<g transform="translate({_num(dx_ - 2)} {_num(dy_ - 3)})">'
+                              f'<use class="x pu" href="#pf" style="--t:{m.start + f * (m.end - m.start):.3f}s"/></g>')
+                grow(dx_ - 2, dy_ - 6, dx_ + 2, dy_)
+            box(gx, gy, 0)
+            pos = nxt
+        else:                                       # Nap: hold still, lie down, Zs float up
+            show(m.start, 'pz')
+            show(m.end, 'ps')
+            gx, gy = ground(m.week, m.weekday)
+            for i in range(ZEES):
+                fx_svg.append(f'<g transform="translate({_num(gx + 4)} {_num(gy - zh - 6)})">'
+                              f'<use class="x zq" href="#zz" style="--t:{m.start + .2 + i * ZEE_GAP:.3f}s"/></g>')
+            grow(gx + 4, gy - zh - 6 - 12, gx + 4 + 6 + 4, gy)
     hx.append(f'to{{transform:{move(*pos)}}}')
     hy.append(f'to{{transform:{rise(up)}}}')
     hero_svg = (f'<g transform="translate({_num(sx)} {_num(sy)})"><g class="hv"><g class="hx"><g class="hy">'
                 f'<g transform="translate({-(fw // 2)} {-fh + 1})">'
-                f'<g class="ps">{stand.paths()}</g><g class="pj">{jump.paths()}</g>'
-                f'</g></g></g></g></g>')
+                f'<g class="ps">{poses.stand.paths()}</g><g class="pj">{poses.jump.paths()}</g>'
+                f'<g class="pl">{poses.slide.paths()}</g></g>'
+                f'<g class="pz" transform="translate({-(zw // 2)} {-zh + 1})">{poses.sleep.paths()}</g>'
+                f'</g></g></g></g>')
 
     # ---------- HUD ----------------------------------------------------------
     minx, miny, maxx, maxy = bounds
@@ -200,8 +239,12 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
         '@keyframes cf{0%{opacity:1}50%,to{opacity:0}}',
         f'.hx{{animation:hx {run} linear infinite}}@keyframes hx{{{"".join(hx)}}}',
         f'.hy{{animation:hy {run} infinite}}@keyframes hy{{{"".join(hy)}}}',
-        f'.ps{{animation:ps {run} steps(1,end) infinite}}@keyframes ps{{{"".join(ps)}}}',
-        f'.pj{{opacity:0;animation:pj {run} steps(1,end) infinite}}@keyframes pj{{{"".join(pj)}}}',
+        '.pj,.pl,.pz{opacity:0}',
+        *(f'.{n}{{animation:{n} {run} steps(1,end) infinite}}@keyframes {n}{{{"".join(pose_kf[n])}}}'
+          for n in POSES),
+        '.pu{animation-name:pu}.zq{animation-name:zq}',
+        f'@keyframes pu{{0%{{opacity:1;transform:none}}{pct(PUFF_TIME)}%,to{{opacity:0;transform:translateY(-3px)}}}}',
+        f'@keyframes zq{{0%{{opacity:1;transform:none}}{pct(ZEE_TIME)}%,to{{opacity:0;transform:translate(4px,-12px)}}}}',
         f'.hv{{animation:hv {run} steps(1,end) infinite}}',
         f'@keyframes hv{{0%{{opacity:0}}{pct(INTRO * .4)}%{{opacity:1}}{pct(INTRO * .55)}%{{opacity:0}}'
         f'{pct(INTRO * .7)}%,{pct(v.land + .1)}%{{opacity:1}}{pct(v.land + .2)}%{{opacity:0}}'
