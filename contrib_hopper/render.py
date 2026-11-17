@@ -2,16 +2,19 @@
 
 Layout: every day of the last year is an isometric floor tile; active days are
 raised blocks (busier = taller and brighter). Weeks run down-right, weekdays
-run up-right. The skull hero hops onto each busy week's tallest block, and hops down,
-slides (and naps on long gaps) across empty weeks (route.py works out where and when). A landed block
-squashes, pops a coin and lights up, and the rest of its week bounces. After
-the last week a flag pops up on the busiest day, the hero does a victory hop
-and warps out, the lights fade and the loop restarts.
+run up-right. The skull hero hops onto each busy week's tallest block, and
+hops down, slides (and naps on long gaps) across empty weeks (route.py works
+out where and when). A landed block squashes, pops a coin and lights up, and
+the rest of its week bounces. After the last week a flag pops up on the
+busiest day, the hero does a victory hop and warps out, the lights fade and
+the loop restarts.
 
 Animation is pure CSS (no JavaScript). The hero is two nested groups: `hx`
 moves its ground point linearly, `hy` lifts it along an eased arc per hop.
-Per-block keyframes drive the squash/bounce and the lit tops; coins share one
-keyframe started with `animation-delay`.
+Four poses (stand, jump, slide, sleep) are stacked and switched with
+step-timed opacity keyframes. Per-block keyframes drive the squash/bounce and
+the lit tops; coins, dust puffs and Zs each share one keyframe started with
+`animation-delay`.
 """
 from __future__ import annotations
 
