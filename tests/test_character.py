@@ -45,10 +45,10 @@ class ConfigTests(unittest.TestCase):
     def setUp(self):
         self.cal = contributions.load(str(FIXTURE), 'tester')
 
-    def test_repo_character_toml_is_the_default_hero(self):
-        hero = C.load(REPO / 'character.toml')
-        self.assertEqual(hero, C.Character())
-        self.assertEqual(R.render(self.cal, 'dark', hero), R.render(self.cal, 'dark'))
+    def test_repo_character_toml_loads_and_renders(self):
+        hero = C.load(REPO / 'character.toml')      # the user's file: any valid customization passes
+        root = ET.fromstring(R.render(self.cal, 'dark', hero))
+        self.assertEqual(root.tag, f'{SVG}svg')
 
     def test_suit_and_light_colours(self):
         hero = C.from_dict({'suit': '#961a2a', 'light': 'FFD060'})
@@ -126,7 +126,8 @@ class PictureHeadTests(unittest.TestCase):
         fills = hero_fills(svg)
         self.assertNotIn('#eeeee6', fills)                    # no skull white
         self.assertIn('#e0a0a0', fills)                       # posterized face colour
-        self.assertEqual(len(R.plan(self.cal).hops), self.cal.weeks)   # still one hop per week
+        landed = {h.week for h in R.plan(self.cal).hops if h.level > 0}
+        self.assertEqual(landed, {d.week for d in self.cal.active})       # still lands on every busy week
 
     def test_saved_pixel_head_round_trips(self):
         out = self.dir / 'character.png'

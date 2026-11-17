@@ -12,12 +12,13 @@ Your GitHub contribution calendar as an isometric pixel-art platformer, in the s
 <sub>Preview made from the sample calendar in `tests/fixtures/calendar.json`.</sub>
 
 Every day of the last year is an isometric floor tile. Each day with contributions is a raised
-block, and busier days are taller and brighter. The skull hero hops across the year, one hop
-per week, onto that week's tallest block, so it climbs and drops with your weekly peaks. Each
-block it lands on squashes, pops a spinning coin and lights up, and the rest of that week
-bounces. Empty weeks get a quick hop along the floor. After the last week a flag pops up on
-your busiest day, the hero does a victory hop and warps out, the lights fade and the loop
-starts again.
+block, and busier days are taller and brighter. The skull hero hops onto each busy week's
+tallest block, so it climbs and drops with your weekly peaks. Each block it lands on squashes,
+pops a spinning coin and lights up, and the rest of that week bounces. When a week (or a run of
+weeks) has no contributions, the hero hops down and slides along the floor, kicking up dust; on a
+gap of three weeks or more it stops halfway for a nap, with Zs floating up, then slides on and
+hops back up onto the next block. After the last week a flag pops up on your busiest day, the
+hero does a victory hop and warps out, the lights fade and the loop starts again.
 
 - One animated SVG per color scheme (light and dark), so it matches the visitor's GitHub theme.
 - CSS animation only. There's no JavaScript, so it plays inside GitHub's `<img>` sandbox.
@@ -73,11 +74,31 @@ light = "#de3442"   # chest light
 Locally, the generator reads `character.toml` from the current folder. To use a different file,
 pass `--character other.toml`.
 
+## Customize the colours
+
+Edit [`theme.toml`](theme.toml) and commit it. The default preset, `crimson`, matches the
+profile README; `cyan` is the original Expedition look.
+
+```toml
+preset = "crimson"   # or "cyan"
+
+[dark]               # optional overrides for GitHub's dark theme
+levels = ["#5a1422", "#961a2a", "#d12a3c", "#ef4e5c"]   # quietest -> busiest
+
+[light]              # optional overrides for GitHub's light theme
+text = "#400e18"
+```
+
+Every colour can be overridden for each theme: `floor`, `catwalk`, `lamp`, `levels` (four
+colours, quietest to busiest), `trim`, `text`, `sub`, `lit` (glowing tops of landed blocks)
+and `flag`. Anything you leave out comes from the preset. The hero's suit and chest light
+stay in `character.toml`. Locally, pass `--theme other.toml` to use a different file.
+
 ## How the update works
 
 `.github/workflows/update.yml` runs every day at 04:23 UTC. It also runs when you trigger it
-from the Actions tab, and on pushes to `main` that change the generator, `character.toml` or a
-picture in the repo root. Each run:
+from the Actions tab, and on pushes to `main` that change the generator, `character.toml`,
+`theme.toml` or a picture in the repo root. Each run:
 
 1. runs the tests,
 2. queries the GraphQL API (`user.contributionsCollection.contributionCalendar`) with the
@@ -115,8 +136,9 @@ python -m unittest discover -s tests -v
 | Path | What it does |
 | --- | --- |
 | `contrib_hopper/contributions.py` | GraphQL query, response parsing, weekday rows and levels |
-| `contrib_hopper/route.py` | The hop route and timing: one hop per week onto the tallest block, flag day, loop length |
-| `contrib_hopper/pixels.py` | Pixel rasters: skull hero (stand and jump poses), coin, flag, isometric blocks and lit tops |
-| `contrib_hopper/render.py` | Scene layout and the animated SVG (CSS keyframes for hops, squashes, coins and lights) |
+| `contrib_hopper/route.py` | The route and timing: hops onto each busy week's tallest block, hop down / slide / nap across empty weeks, flag day, loop length |
+| `contrib_hopper/pixels.py` | Pixel rasters: skull hero (stand, jump, slide and sleep poses), coin, flag, isometric blocks, lit tops, the Z and the dust puff |
+| `contrib_hopper/render.py` | Scene layout and the animated SVG (CSS keyframes for hops, squashes, coins, lights, slides, naps, dust puffs and Zs) |
 | `contrib_hopper/character.py` | Hero settings from `character.toml`, and picture-to-pixel-head conversion |
+| `contrib_hopper/theme.py` | Colour presets (crimson, cyan) and `theme.toml` overrides |
 | `tests/` | Fixture calendar and tests for parsing, the route, the sprites and the SVG |

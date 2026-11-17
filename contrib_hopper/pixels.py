@@ -7,6 +7,8 @@ made of 1 px tall horizontal runs, so the output stays sharp at any zoom.
 """
 from __future__ import annotations
 
+from typing import NamedTuple
+
 TILE_W, TILE_H = 16, 8               # isometric diamond, half Expedition's 32x16
 INK = (18, 14, 26)                   # outline colour from Expedition
 
@@ -59,6 +61,13 @@ JUMP_LEGS = [
     "..bbb......bbb..",
     "................",
 ]
+# Sliding along the floor: wide, low surf stance, feet on the bottom row
+SLIDE_LEGS = [
+    "...kkkk..kkkk...",
+    "..kkk......kkk..",
+    ".kkk........kkk.",
+    "bbb..........bbb",
+]
 # Spinning coin popped by a landing: face-on, then edge-on. Same gold in both themes.
 COIN_COLORS = {'y': (250, 196, 60), 'Y': (255, 240, 160), 'o': (196, 124, 28)}
 COIN = [
@@ -83,6 +92,9 @@ FLAG = [
     "Wpppp",
     "Wppp.",
 ] + ["W...."] * 9
+# Napping: a "Z" floats up; sliding: a puff of dust at each tile
+ZEE = ["ZZZZ", "..Z.", ".Z..", "ZZZZ"]
+PUFF = [".dd.", "dddd", ".dd."]
 
 Color = tuple  # (r, g, b)
 
@@ -164,10 +176,34 @@ def _hero(colors: dict, head: Raster, legs: list[str]) -> Raster:
     return canvas.outline()
 
 
-def hero_poses(colors: dict = COLORS, head: Raster | None = None) -> tuple[Raster, Raster]:
-    """(stand, jump): same size, so they can be swapped in place."""
+class Poses(NamedTuple):
+    stand: Raster
+    jump: Raster
+    slide: Raster
+    sleep: Raster
+
+
+def rotate_cw(r: Raster) -> Raster:
+    """r turned 90 degrees clockwise: pixel (x, y) moves to (r.h - 1 - y, x)."""
+    out = Raster(r.h, r.w)
+    for (x, y), c in r.px.items():
+        out.set(r.h - 1 - y, x, c)
+    return out
+
+
+def hero_poses(colors: dict = COLORS, head: Raster | None = None) -> Poses:
+    """stand, jump and slide share one size so they swap in place; sleep is stand lying down."""
     head = head or grid(SKULL, outline=True)
-    return _hero(colors, head, STAND_LEGS), _hero(colors, head, JUMP_LEGS)
+    stand = _hero(colors, head, STAND_LEGS)
+    return Poses(stand, _hero(colors, head, JUMP_LEGS), _hero(colors, head, SLIDE_LEGS), rotate_cw(stand))
+
+
+def zee(color: Color) -> Raster:
+    return grid(ZEE, {'Z': tuple(color)}, outline=True)
+
+
+def puff(color: Color) -> Raster:
+    return grid(PUFF, {'d': tuple(color)})
 
 
 def coin(frame: int) -> Raster:

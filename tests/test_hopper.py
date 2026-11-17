@@ -15,7 +15,8 @@ from pathlib import Path
 from unittest import mock
 
 from contrib_hopper import contributions, render as R
-from contrib_hopper.route import ground
+from contrib_hopper.contributions import Calendar, Day
+from contrib_hopper.route import LANE_D, START_W, Nap, Slide, ground
 from contrib_hopper.__main__ import OUTPUTS, main
 
 FIXTURE = Path(__file__).parent / 'fixtures' / 'calendar.json'
@@ -33,6 +34,19 @@ def with_days(payload: dict, fn) -> dict:
         for day in week['contributionDays']:
             fn(day)
     return p
+
+
+def gappy() -> Calendar:
+    """Blocks in weeks 0, 2, 6, 7; empty weeks 1, 3-5 (a nap) and 8-9."""
+    levels = {(0, 2): 2, (2, 3): 1, (6, 1): 4, (7, 1): 1}
+    days = [Day(f'2026-w{w:02d}-{d}', levels.get((w, d), 0) * 3, levels.get((w, d), 0), w, d)
+            for w in range(10) for d in range(7)]
+    return Calendar('gappy', sum(x.count for x in days), tuple(days))
+
+
+def pose_track(frames: str) -> list:
+    """[(percent, opacity)] from step-timed opacity keyframes."""
+    return sorted((float(p), int(o)) for p, o in re.findall(r'([\d.]+)%\{opacity:([01])\}', frames))
 
 
 class ParseTests(unittest.TestCase):
@@ -185,7 +199,7 @@ class RenderTests(unittest.TestCase):
         for h in (*self.plan.hops, self.plan.victory):
             self.assertIn(f'translateY(-{h.apex}px)', hy)
             self.assertIn(f'{self.pct(h.land)}%', hy)
-        self.assertEqual(self.keyframes(svg, 'ps').count('opacity:0'), len(self.plan.hops) + 1)
+        self.assertEqual(self.keyframes(svg, 'ps').count('opacity:0'), len(self.plan.moves) + 1)
 
     def test_empty_days_get_floor_only(self):
         floor = self.roots['dark'].find(f"{SVG}g[@id='floor']").findall(f"{SVG}use[@href='#f']")
@@ -215,11 +229,76 @@ class RenderTests(unittest.TestCase):
         self.assertIn('#120e1a', fills)       # INK outline
         self.assertNotIn('#787e92', fills)    # no gun
         classes = {g.get('class') for g in hero.findall(f".//{SVG}g[@class]")}
-        self.assertEqual(classes, {'hv', 'hx', 'hy', 'ps', 'pj'})
+        self.assertEqual(classes, {'hv', 'hx', 'hy', 'ps', 'pj', 'pl', 'pz'})
 
     def test_reduced_motion_gets_a_still_frame(self):
         for svg in self.svgs.values():
             self.assertIn('@media (prefers-reduced-motion:reduce){*{animation:none!important}', svg)
+
+
+class EmptyWeekTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.cal = gappy()
+        cls.plan = R.plan(cls.cal)
+        cls.svg = R.render(cls.cal, 'dark')
+        cls.root = ET.fromstring(cls.svg)
+        cls.slides = [m for m in cls.plan.moves if isinstance(m, Slide)]
+        cls.naps = [m for m in cls.plan.moves if isinstance(m, Nap)]
+
+    def pct(self, t):
+        return float(f'{t / self.plan.period * 100:.3f}')
+
+    def keyframes(self, name):
+        return re.search(r'@keyframes %s\{(.*?\})\}' % name, self.svg).group(1)
+
+    def test_the_gappy_year_has_slides_and_a_nap(self):
+        self.assertEqual(len(self.slides), 3)
+        self.assertEqual(len(self.naps), 1)
+
+    def test_exactly_one_pose_is_visible_at_all_times(self):
+        tracks = {name: pose_track(self.keyframes(name)) for name in ('ps', 'pj', 'pl', 'pz')}
+        times = sorted({p for track in tracks.values() for p, _ in track})
+
+        def at(track, p):
+            return [o for q, o in track if q <= p][-1]
+
+        for p in times:
+            self.assertEqual(sum(at(tracks[n], p) for n in tracks), 1, p)
+
+    def test_slide_and_sleep_poses_show_during_their_moves(self):
+        slide_on = [p for p, o in pose_track(self.keyframes('pl')) if o == 1]
+        sleep_on = [p for p, o in pose_track(self.keyframes('pz')) if o == 1]
+        self.assertEqual(slide_on, [self.pct(s.start) for s in self.slides])
+        self.assertEqual(sleep_on, [self.pct(n.start) for n in self.naps])
+
+    def test_hero_slides_to_the_end_of_each_slide(self):
+        hx = self.keyframes('hx')
+        sx, sy = ground(START_W, LANE_D)
+        for s in self.slides:
+            gx, gy = ground(s.week, s.weekday)
+            self.assertIn(f'translate({R._num(gx - sx)}px,{R._num(gy - sy)}px)', hx)
+
+    def test_one_dust_puff_per_week_slid_over(self):
+        puffs = self.root.find(f"{SVG}g[@id='fx']").findall(f".//{SVG}use[@class='x pu']")
+        self.assertEqual(len(puffs), sum(s.week - s.from_week for s in self.slides))
+
+    def test_three_zees_per_nap(self):
+        zees = self.root.find(f"{SVG}g[@id='fx']").findall(f".//{SVG}use[@class='x zq']")
+        self.assertEqual(len(zees), 3 * len(self.naps))
+        starts = sorted(float(re.search(r'--t:([\d.]+)s', z.get('style')).group(1)) for z in zees)
+        self.assertGreaterEqual(starts[0], self.naps[0].start)
+        self.assertLess(starts[-1], self.naps[0].end)
+
+    def test_landings_still_light_up_and_pop_coins(self):
+        landed = [h for h in self.plan.hops if h.level > 0]
+        coins = self.root.find(f"{SVG}g[@id='fx']").findall(f".//{SVG}g[@class='x cn']")
+        self.assertEqual(len(coins), len(landed))
+        self.assertEqual(len(re.findall(r'@keyframes t\d+\{', self.svg)), len(landed))
+
+    def test_reduced_motion_hides_the_extra_poses(self):
+        self.assertIn('.pj,.pl,.pz{opacity:0}', self.svg)
+        self.assertIn('@media (prefers-reduced-motion:reduce){*{animation:none!important}', self.svg)
 
 
 class CliTests(unittest.TestCase):
