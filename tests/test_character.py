@@ -126,7 +126,8 @@ class PictureHeadTests(unittest.TestCase):
         fills = hero_fills(svg)
         self.assertNotIn('#eeeee6', fills)                    # no skull white
         self.assertIn('#e0a0a0', fills)                       # posterized face colour
-        self.assertEqual(len(R.plan(self.cal).hops), self.cal.weeks)   # still one hop per week
+        landed = {h.week for h in R.plan(self.cal).hops if h.level > 0}
+        self.assertEqual(landed, {d.week for d in self.cal.active})       # still lands on every busy week
 
     def test_saved_pixel_head_round_trips(self):
         out = self.dir / 'character.png'
