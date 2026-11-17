@@ -5,7 +5,6 @@ Settings come from a small TOML file (character.toml in the repo root):
     head  = "skull"        # or a picture path, relative to this file
     suit  = "#24263e"      # suit
     light = "#de3442"      # chest light
-    gun   = "#787e92"      # gun
 
 A picture becomes the head the way Expedition's CHARACTER option does it:
 centred square crop, shrunk to a 16 px round head, posterized to 4 levels per
@@ -29,8 +28,9 @@ from . import pixels as px
 
 HEAD_SIZE = 16
 STEP = 64                    # posterize each colour channel to 4 levels (as in Expedition)
-DEFAULTS = {'suit': px.COLORS['k'], 'light': px.COLORS['r'], 'gun': px.COLORS['g']}
+DEFAULTS = {'suit': px.COLORS['k'], 'light': px.COLORS['r']}
 KEYS = {'head', *DEFAULTS}
+IGNORED = {'gun'}            # blaster-era setting: accepted so old character.toml files still load
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,6 @@ class Character:
     head: str = 'skull'                        # 'skull' or a picture path
     suit: tuple = DEFAULTS['suit']
     light: tuple = DEFAULTS['light']
-    gun: tuple = DEFAULTS['gun']
     base: Path = field(default=Path('.'), compare=False)   # folder the head path is relative to
 
     def colors(self) -> dict:
@@ -50,9 +49,6 @@ class Character:
         if self.light != DEFAULTS['light']:
             c['r'] = self.light
             c['R'] = px.lift(self.light, 60)
-        if self.gun != DEFAULTS['gun']:
-            c['g'] = self.gun
-            c['G'] = px.lift(self.gun, 90)
         return c
 
     def head_raster(self) -> px.Raster:
@@ -70,7 +66,7 @@ def parse_color(value, key: str) -> tuple:
 
 def from_dict(data: dict, base: Path = Path('.')) -> Character:
     data = data.get('character', data)          # allow an optional [character] table
-    unknown = set(data) - KEYS
+    unknown = set(data) - KEYS - IGNORED
     if unknown:
         raise ValueError(f'unknown character setting(s): {", ".join(sorted(unknown))} '
                          f'(expected {", ".join(sorted(KEYS))})')

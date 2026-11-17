@@ -62,6 +62,12 @@ class ConfigTests(unittest.TestCase):
     def test_optional_character_table(self):
         self.assertEqual(C.from_dict({'character': {'light': '#00ff00'}}).light, (0, 255, 0))
 
+    def test_old_gun_setting_is_ignored(self):
+        self.assertEqual(C.from_dict({'gun': '#3a3f55'}), C.Character())
+        self.assertFalse(hasattr(C.Character(), 'gun'))
+        with self.assertRaisesRegex(ValueError, r'expected head, light, suit\)'):
+            C.from_dict({'hat': 'yes'})
+
     def test_bad_settings_are_rejected(self):
         with self.assertRaisesRegex(ValueError, 'hex colour'):
             C.from_dict({'suit': 'red'})

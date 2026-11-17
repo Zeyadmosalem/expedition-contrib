@@ -19,6 +19,10 @@ class SpriteTests(unittest.TestCase):
         self.assertEqual(feet(stand), stand.h - 1)          # feet on the bottom row
         self.assertLess(feet(jump), feet(stand))            # feet tucked up in the air
 
+    def test_blaster_sprites_are_gone(self):
+        for name in ('gun', 'GUN', 'hero_frames', 'LEGS'):
+            self.assertFalse(hasattr(px, name), name)
+
     def test_coin_spins_between_two_frames(self):
         gold = px.COIN_COLORS['y']
         face, edge = px.coin(0), px.coin(1)

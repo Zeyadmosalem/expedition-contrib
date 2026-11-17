@@ -12,4 +12,3 @@ head = "skull"
 # Colours as hex codes. These are the Expedition defaults.
 suit = "#24263e"    # suit
 light = "#de3442"   # chest light
-gun = "#787e92"     # gun

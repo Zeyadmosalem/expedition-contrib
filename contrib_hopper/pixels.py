@@ -46,36 +46,18 @@ BODY = [
     "...KkkkkkkkkK...",
     "....kkKKKKkk....",
 ]
-LEGS = [
-    ["....kkk..kkk....",
-     "....kkk..kkk....",
-     "....kk....kk....",
-     "...bbb....bbb..."],
-    ["...kkk....kkk...",
-     "..kkk......kk...",
-     "..kk.......kk...",
-     ".bbb.......bbb.."],
-    ["....kkk..kkk....",
-     "....kkk..kkk....",
-     "....kk....kk....",
-     "...bbb....bbb..."],
-    ["...kkk....kkk...",
-     "...kk......kkk..",
-     "...kk.......kk..",
-     "..bbb.......bbb."],
+STAND_LEGS = [
+    "....kkk..kkk....",
+    "....kkk..kkk....",
+    "....kk....kk....",
+    "...bbb....bbb...",
 ]
-# Mid-jump: legs kicked out, feet tucked one row up (same 4-row frame as LEGS)
+# Mid-jump: legs kicked out, feet tucked one row up (same 4-row frame as STAND_LEGS)
 JUMP_LEGS = [
     "...kkkk..kkkk...",
     "..kkk......kkk..",
     "..bbb......bbb..",
     "................",
-]
-GUN = [
-    "..gggggggG",
-    "GGgggggggg",
-    "gg.gg.....",
-    "g.........",
 ]
 # Spinning coin popped by a landing: face-on, then edge-on. Same gold in both themes.
 COIN_COLORS = {'y': (250, 196, 60), 'Y': (255, 240, 160), 'o': (196, 124, 28)}
@@ -182,16 +164,10 @@ def _hero(colors: dict, head: Raster, legs: list[str]) -> Raster:
     return canvas.outline()
 
 
-def hero_frames(colors: dict = COLORS, head: Raster | None = None) -> list[Raster]:
-    """Four walk frames: skull (or custom) head on the suit with the chest light."""
-    head = head or grid(SKULL, outline=True)
-    return [_hero(colors, head, legs) for legs in LEGS]
-
-
 def hero_poses(colors: dict = COLORS, head: Raster | None = None) -> tuple[Raster, Raster]:
     """(stand, jump): same size, so they can be swapped in place."""
     head = head or grid(SKULL, outline=True)
-    return _hero(colors, head, LEGS[0]), _hero(colors, head, JUMP_LEGS)
+    return _hero(colors, head, STAND_LEGS), _hero(colors, head, JUMP_LEGS)
 
 
 def coin(frame: int) -> Raster:
@@ -200,10 +176,6 @@ def coin(frame: int) -> Raster:
 
 def flag(pennant: Color) -> Raster:
     return grid(FLAG, {'W': COLORS['W'], 'p': tuple(pennant)}, outline=True)
-
-
-def gun(colors: dict = COLORS) -> Raster:
-    return grid(GUN, colors, outline=True)
 
 
 def _diamond_span(y: int) -> tuple[int, int]:
