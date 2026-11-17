@@ -10,6 +10,7 @@ on:
       - "contrib_hopper/**"
       - ".github/workflows/update.yml"
       - "character.toml"
+      - "theme.toml"
       - "*.png"
       - "*.jpg"
       - "*.jpeg"

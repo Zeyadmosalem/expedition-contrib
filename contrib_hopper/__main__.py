@@ -11,11 +11,12 @@ import os
 import sys
 from pathlib import Path
 
-from . import character, contributions
+from . import character, contributions, theme as colours
 from .render import render
 
 OUTPUTS = {'light': 'expedition-contrib.svg', 'dark': 'expedition-contrib-dark.svg'}
 DEFAULT_CHARACTER = 'character.toml'
+DEFAULT_THEME = 'theme.toml'
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,6 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument('--save', help='also save the fetched GraphQL response to this path')
     ap.add_argument('--out', default='dist', help='output folder (default: dist)')
     ap.add_argument('--character', help='hero settings file (default: character.toml if it exists)')
+    ap.add_argument('--theme', help='colour settings file (default: theme.toml if it exists)')
     args = ap.parse_args(argv)
     if not args.user:
         ap.error('--user is required')
@@ -36,6 +38,13 @@ def main(argv: list[str] | None = None) -> int:
         hero = character.load(DEFAULT_CHARACTER)
     else:
         hero = character.Character()
+
+    if args.theme:
+        palettes = colours.load(args.theme)                 # named explicitly: must exist
+    elif Path(DEFAULT_THEME).is_file():
+        palettes = colours.load(DEFAULT_THEME)
+    else:
+        palettes = colours.palettes()
 
     if args.input:
         cal = contributions.load(args.input, args.user)
@@ -49,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     for theme, name in OUTPUTS.items():
-        svg = render(cal, theme, hero)
+        svg = render(cal, theme, hero, palettes[theme])
         (out / name).write_text(svg, encoding='utf-8')
         print(f'{out / name}: {len(svg) // 1024} KB, {len(cal.active)} blocks, theme {theme}')
     return 0

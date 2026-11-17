@@ -21,6 +21,7 @@ from . import pixels as px
 from .character import Character
 from .contributions import Calendar
 from .route import HEIGHTS, INTRO, LANE_D, START_W, ground, lift, plan, tile_xy
+from .theme import palettes
 
 __all__ = ['THEMES', 'HEIGHTS', 'ground', 'plan', 'render', 'tile_xy']
 
@@ -32,20 +33,7 @@ COIN_LIFT = 36                  # coin starts this far above the block top: clea
 EASE_OUT = 'cubic-bezier(.33,.66,.66,1)'     # take-off -> apex
 EASE_IN = 'cubic-bezier(.33,0,.66,.33)'      # apex -> landing
 
-THEMES = {
-    'dark': {
-        'floor': (24, 28, 46), 'walk': (40, 44, 66), 'lamp': (90, 200, 220),
-        'levels': [(38, 64, 96), (40, 108, 140), (48, 164, 190), (118, 236, 240)],
-        'trim': (90, 200, 220), 'text': (150, 226, 236), 'sub': (104, 124, 158),
-        'lit': (255, 214, 92), 'flag': (240, 80, 90),
-    },
-    'light': {
-        'floor': (222, 228, 238), 'walk': (196, 202, 218), 'lamp': (40, 150, 190),
-        'levels': [(160, 212, 230), (92, 182, 212), (40, 140, 182), (20, 92, 150)],
-        'trim': (150, 236, 255), 'text': (24, 44, 78), 'sub': (96, 108, 136),
-        'lit': (255, 190, 50), 'flag': (222, 52, 66),
-    },
-}
+THEMES = palettes()              # default preset's {'dark': ..., 'light': ...}; see theme.py
 
 
 def _num(v: float) -> str:
@@ -53,8 +41,10 @@ def _num(v: float) -> str:
     return '0' if s in ('-0', '') else s
 
 
-def render(cal: Calendar, theme: str = 'dark', character: Character | None = None) -> str:
-    th = THEMES[theme]
+def render(cal: Calendar, theme: str = 'dark', character: Character | None = None,
+           palette: dict | None = None) -> str:
+    """palette: one theme's colours (see theme.py); None = the default preset's `theme`."""
+    th = palette if palette is not None else THEMES[theme]
     character = character or Character()
     tl = plan(cal)
     T = tl.period
@@ -72,10 +62,10 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
     defs = []
     floor = px.iso_block(HEIGHTS[0], th['floor'], px.shade(th['floor'], .62),
                          px.shade(th['floor'], .46), outline=False)
-    walk = px.iso_block(HEIGHTS[0], th['walk'], px.shade(th['walk'], .62),
-                        px.shade(th['walk'], .46), outline=False)
-    lamp = px.iso_block(HEIGHTS[0], th['walk'], px.shade(th['walk'], .62),
-                        px.shade(th['walk'], .46), outline=False)
+    walk = px.iso_block(HEIGHTS[0], th['catwalk'], px.shade(th['catwalk'], .62),
+                        px.shade(th['catwalk'], .46), outline=False)
+    lamp = px.iso_block(HEIGHTS[0], th['catwalk'], px.shade(th['catwalk'], .62),
+                        px.shade(th['catwalk'], .46), outline=False)
     for x, y in ((8, 4), (9, 4), (8, 5), (9, 5)):          # a lit floor light every few tiles
         lamp.set(x, y, th['lamp'])
     defs.append(f'<g id="f">{floor.paths()}</g><g id="c">{walk.paths()}</g><g id="cl">{lamp.paths()}</g>')

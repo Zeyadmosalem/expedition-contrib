@@ -1,12 +1,19 @@
 """Tests for scene colours: presets and theme.toml (contrib_hopper.theme)."""
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest import mock
 
+from contrib_hopper import contributions, render as R
 from contrib_hopper import theme as TH
+from contrib_hopper.__main__ import OUTPUTS, main
 
 REPO = Path(__file__).resolve().parent.parent
+FIXTURE = Path(__file__).parent / 'fixtures' / 'calendar.json'
 
 
 def rgb(h: str) -> tuple:
@@ -86,6 +93,54 @@ class FileTests(unittest.TestCase):
             with self.subTest(data=data):
                 with self.assertRaisesRegex(ValueError, message):
                     TH.from_dict(data)
+
+
+class RenderThemeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.cal = contributions.load(str(FIXTURE), 'tester')
+
+    def test_default_render_is_crimson(self):
+        self.assertEqual(R.THEMES, TH.palettes())
+        self.assertIn('#ef4e5c', R.render(self.cal, 'dark'))
+
+    def test_render_uses_the_given_palette(self):
+        svg = R.render(self.cal, 'dark', palette=TH.palettes('cyan')['dark'])
+        self.assertIn('#76ecf0', svg)          # cyan busiest level
+        self.assertNotIn('#ef4e5c', svg)       # no crimson
+
+    def test_cli_reads_a_theme_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / 'colours.toml'
+            cfg.write_text('preset = "cyan"\n', encoding='utf-8')
+            with mock.patch('sys.stdout'):
+                main(['--user', 'tester', '--input', str(FIXTURE), '--out', tmp, '--theme', str(cfg)])
+            dark = (Path(tmp) / OUTPUTS['dark']).read_text(encoding='utf-8')
+            self.assertIn('#76ecf0', dark)
+            ET.fromstring(dark)
+
+    def test_cli_uses_theme_toml_in_the_working_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, 'theme.toml').write_text(
+                '[dark]\nlevels = ["#111111", "#222222", "#333333", "#123456"]\n', encoding='utf-8')
+            cwd = os.getcwd()
+            try:
+                os.chdir(tmp)
+                with mock.patch('sys.stdout'):
+                    main(['--user', 'tester', '--input', str(FIXTURE), '--out', 'out'])
+                dark = Path(tmp, 'out', OUTPUTS['dark']).read_text(encoding='utf-8')
+                light = Path(tmp, 'out', OUTPUTS['light']).read_text(encoding='utf-8')
+            finally:
+                os.chdir(cwd)
+            self.assertIn('#123456', dark)
+            self.assertNotIn('#123456', light)
+
+    def test_cli_rejects_a_bad_theme_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / 'bad.toml'
+            cfg.write_text('preset = "neon"\n', encoding='utf-8')
+            with mock.patch('sys.stdout'), self.assertRaisesRegex(ValueError, 'unknown theme preset'):
+                main(['--user', 'tester', '--input', str(FIXTURE), '--out', tmp, '--theme', str(cfg)])
 
 
 if __name__ == '__main__':
