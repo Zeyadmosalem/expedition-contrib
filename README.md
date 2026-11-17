@@ -20,8 +20,10 @@ loop starts again. The hero dashes through empty weeks, so a sparse year still l
 - One animated SVG per color scheme (light and dark), so it matches the visitor's GitHub theme.
 - CSS animation only. There's no JavaScript, so it plays inside GitHub's `<img>` sandbox.
   Visitors who prefer reduced motion get a still frame.
-- The generator uses only the Python standard library. The hero's head is the Expedition skull
-  logo, reduced to a 15 px 3-colour sprite with a 1 px dark outline.
+- The generator uses only the Python standard library. Pillow is needed only for a picture head.
+  The default hero's head is the Expedition skull logo, reduced to a 15 px 3-colour sprite with a
+  1 px dark outline. You can swap in your own picture and suit colours (see
+  [Customize the hero](#customize-the-hero)).
 
 ## Put it on your profile
 
@@ -40,10 +42,40 @@ To use it for another account, fork this repo and replace `Zeyadmosalem` in the 
 login. The workflow draws the repository owner's calendar by default. To draw a different
 account, set a repository variable named `CONTRIB_USER`.
 
+## Customize the hero
+
+Edit [`character.toml`](character.toml) and commit it. The workflow redraws the animation on
+that push.
+
+```toml
+head = "skull"      # the Expedition skull, or a picture: head = "character.png"
+suit = "#24263e"    # suit
+light = "#de3442"   # chest light
+gun = "#787e92"     # gun
+```
+
+- **Colours** are hex codes. The lit edge of the suit and the gun highlight are derived from them.
+- **Picture head:** this works like Expedition's CHARACTER photo option. The picture is cropped
+  to a centred square, shrunk to a 16 px round head, posterized to a small palette and outlined.
+  PNG, JPEG and WebP all work, and the path is relative to `character.toml`.
+- **Keep your photo private:** this repo is public, so any picture you commit here is published.
+  To publish only the tiny pixel head, make it on your own computer first (this needs Pillow,
+  `pip install pillow`), then commit just `character.png`:
+
+  ```bash
+  python -m contrib_blaster.character my-photo.jpg character.png
+  ```
+
+  Then set `head = "character.png"`.
+
+Locally, the generator reads `character.toml` from the current folder. To use a different file,
+pass `--character other.toml`.
+
 ## How the update works
 
 `.github/workflows/update.yml` runs every day at 04:23 UTC. It also runs when you trigger it
-from the Actions tab and when the generator changes on `main`. Each run:
+from the Actions tab, and on pushes to `main` that change the generator, `character.toml` or a
+picture in the repo root. Each run:
 
 1. runs the tests,
 2. queries the GraphQL API (`user.contributionsCollection.contributionCalendar`) with the
@@ -83,4 +115,5 @@ python -m unittest discover -s tests -v
 | `contrib_blaster/contributions.py` | GraphQL query, response parsing, weekday rows and levels |
 | `contrib_blaster/pixels.py` | Pixel rasters: skull hero, gun, isometric blocks (lit top plus two shaded faces) |
 | `contrib_blaster/render.py` | Scene layout, shot timeline and the animated SVG |
+| `contrib_blaster/character.py` | Hero settings from `character.toml`, and picture-to-pixel-head conversion |
 | `tests/` | Fixture calendar and tests for parsing, the SVG structure and the timeline |

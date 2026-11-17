@@ -1,0 +1,15 @@
+# The hero of the contribution animation. Edit, commit, and the next workflow
+# run (on push, daily, or "Run workflow" in the Actions tab) redraws it.
+
+# "skull" is the Expedition skull. Or put a picture path here (relative to this
+# file), e.g. head = "character.png". The picture is cropped to a centred
+# square and turned into a 16 px round pixel head, like Expedition's photo
+# option. The picture is committed to this public repo, so to publish only the
+# tiny pixel head, make it locally first:
+#     python -m contrib_blaster.character my-photo.jpg character.png
+head = "skull"
+
+# Colours as hex codes. These are the Expedition defaults.
+suit = "#24263e"    # suit
+light = "#de3442"   # chest light
+gun = "#787e92"     # gun

@@ -138,13 +138,13 @@ def grid(rows: list[str], colors: dict = COLORS, outline: bool = False) -> Raste
     return r.outline() if outline else r
 
 
-def hero_frames() -> list[Raster]:
-    """Four walk frames: skull head on the dark suit with the red chest light."""
-    head = grid(SKULL, outline=True)
-    body = grid(BODY)
+def hero_frames(colors: dict = COLORS, head: Raster | None = None) -> list[Raster]:
+    """Four walk frames: skull (or custom) head on the suit with the chest light."""
+    head = head or grid(SKULL, outline=True)
+    body = grid(BODY, colors)
     frames = []
     for legs in LEGS:
-        leg = grid(legs)
+        leg = grid(legs, colors)
         width = max(head.w, 16) + 2
         height = head.h + len(BODY) + len(legs) - 1
         canvas = Raster(width, height)
@@ -155,8 +155,8 @@ def hero_frames() -> list[Raster]:
     return frames
 
 
-def gun() -> Raster:
-    return grid(GUN, outline=True)
+def gun(colors: dict = COLORS) -> Raster:
+    return grid(GUN, colors, outline=True)
 
 
 def _diamond_span(y: int) -> tuple[int, int]:

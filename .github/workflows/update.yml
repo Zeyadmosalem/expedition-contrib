@@ -9,6 +9,11 @@ on:
     paths:
       - "contrib_blaster/**"
       - ".github/workflows/update.yml"
+      - "character.toml"
+      - "*.png"
+      - "*.jpg"
+      - "*.jpeg"
+      - "*.webp"
 
 permissions:
   contents: write                # push the SVGs to the `output` branch
@@ -26,6 +31,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install Pillow (reads a picture head from character.toml)
+        run: python -m pip install --disable-pip-version-check pillow==11.3.0
 
       - name: Test
         run: python -m unittest discover -s tests -v

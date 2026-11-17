@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
 from . import pixels as px
+from .character import Character
 from .contributions import Calendar
 
 HEIGHTS = (2, 4, 7, 10, 14)      # block height per level 0..4 (level 0 = floor slab)
@@ -81,9 +82,10 @@ class Timeline:
     stops: tuple         # (u, seconds) at every whole step of the hero's walk
 
 
-def plan(cal: Calendar) -> Timeline:
-    hero = px.hero_frames()[0]
-    gun = px.gun()
+def plan(cal: Calendar, character: Character | None = None) -> Timeline:
+    character = character or Character()
+    hero = px.hero_frames(character.colors(), character.head_raster())[0]
+    gun = px.gun(character.colors())
     tip_dx = 2 + gun.w                       # gun drawn 2 px right of the feet
     tip_dy = (-hero.h + 1) + (hero.h - 10) + 1
     align = tip_dx / 16                      # see docs: tip lies on column u + align
@@ -117,9 +119,10 @@ def _num(v: float) -> str:
     return '0' if s in ('-0', '') else s
 
 
-def render(cal: Calendar, theme: str = 'dark') -> str:
+def render(cal: Calendar, theme: str = 'dark', character: Character | None = None) -> str:
     th = THEMES[theme]
-    tl = plan(cal)
+    character = character or Character()
+    tl = plan(cal, character)
     T = tl.period
 
     def pct(t: float) -> str:
@@ -208,8 +211,8 @@ def render(cal: Calendar, theme: str = 'dark') -> str:
                       f'<rect class="x mz" x="-2" y="-2" width="4" height="3" fill="{px.hex_color(core)}"/></g>')
 
     # ---------- hero ---------------------------------------------------------
-    frames = px.hero_frames()
-    gun = px.gun()
+    frames = px.hero_frames(character.colors(), character.head_raster())
+    gun = px.gun(character.colors())
     fw, fh = frames[0].w, frames[0].h
     gx, gy = 2, -fh + 1 + fh - 10                # relative to the feet
     frames_svg = ''.join(f'<g class="l l{k}">{f.paths()}</g>' for k, f in enumerate(frames))
