@@ -1,4 +1,4 @@
-"""Tests for the Expedition contribution blaster (standard library unittest).
+"""Tests for the Expedition contribution Block Hopper (standard library unittest).
 
 Run with:  python -m unittest discover -s tests -v
 """
@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 from contrib_hopper import contributions, render as R
+from contrib_hopper.route import ground
 from contrib_hopper.__main__ import OUTPUTS, main
 
 FIXTURE = Path(__file__).parent / 'fixtures' / 'calendar.json'
@@ -102,19 +103,21 @@ class RenderTests(unittest.TestCase):
     def setUpClass(cls):
         cls.cal = contributions.parse(fixture_payload(), 'tester')
         cls.plan = R.plan(cls.cal)
+        cls.landed = [h for h in cls.plan.hops if h.level > 0]
         cls.svgs = {theme: R.render(cls.cal, theme) for theme in R.THEMES}
         cls.roots = {theme: ET.fromstring(svg) for theme, svg in cls.svgs.items()}
 
+    def pct(self, t):
+        return f'{t / self.plan.period * 100:.3f}'.rstrip('0').rstrip('.')
+
     def blocks(self, theme):
-        return self.roots[theme].find(f"{SVG}g[@id='blocks']").findall(f'{SVG}use')
+        return self.roots[theme].find(f"{SVG}g[@id='blocks']").findall(f'{SVG}g')
 
-    def bursts(self, theme):
-        fx = self.roots[theme].find(f"{SVG}g[@id='fx']")
-        return [g for g in fx.findall(f'{SVG}g') if g.find(f"{SVG}rect[@class='x f']") is not None]
+    def lit(self, theme):
+        return [u for g in self.blocks(theme) for u in g.findall(f'{SVG}use') if u.get('class') == 'lt']
 
-    def bolts(self, theme):
-        fx = self.roots[theme].find(f"{SVG}g[@id='fx']")
-        return [g for g in fx.findall(f'{SVG}g') if g.find(f"{SVG}g[@class='x bo']") is not None]
+    def keyframes(self, svg, name):
+        return re.search(r'@keyframes %s\{(.*?\})\}' % name, svg).group(1)
 
     def test_both_themes_are_well_formed_svg(self):
         self.assertEqual(set(self.svgs), {'light', 'dark'})
@@ -129,41 +132,60 @@ class RenderTests(unittest.TestCase):
             self.assertNotIn('<script', svg)
             self.assertNotRegex(svg, r'\son[a-z]+=')
 
-    def test_every_active_day_gets_one_block_and_one_burst(self):
+    def test_no_blaster_leftovers(self):
+        for svg in self.svgs.values():
+            self.assertNotIn('bolt', svg)
+            self.assertNotIn('SECTOR CLEAR', svg)
+            self.assertIn('LEVEL CLEAR', svg)
+            self.assertLess(len(svg), 200_000)
+
+    def test_every_active_day_gets_one_block(self):
         active = self.cal.active
         self.assertGreater(len(active), 100)
-        self.assertEqual(len(self.plan.shots), len(active))
-        self.assertEqual({(s.week, s.weekday) for s in self.plan.shots},
-                         {(d.week, d.weekday) for d in active})
-        kills = sorted(round(s.kill, 3) for s in self.plan.shots)
         for theme in self.svgs:
-            self.assertEqual(len(self.blocks(theme)), len(active))
-            delays = sorted(float(re.search(r'--t:([\d.]+)s', g.get('style')).group(1))
-                            for g in self.bursts(theme))
-            self.assertEqual(delays, kills)
+            groups = self.blocks(theme)
+            self.assertEqual(len(groups), len(active))
+            refs = sorted(g.find(f'{SVG}use').get('href') for g in groups)
+            self.assertEqual(refs, sorted(f'#b{d.level}' for d in active))
 
-    def test_every_block_is_shot_and_rebuilt(self):
+    def test_landed_blocks_squash_and_the_rest_bounce(self):
         svg = self.svgs['dark']
-        for use in self.blocks('dark'):
-            name = re.fullmatch(r'animation-name:(k\d+)', use.get('style')).group(1)
-            frames = re.search(r'@keyframes %s\{(.*?\})\}' % name, svg).group(1)
-            self.assertIn('opacity:0', frames)                   # shot down ...
-            self.assertTrue(frames.endswith('to{opacity:1;transform:none}'))   # ... and rebuilt
+        moves = [self.keyframes(svg, re.fullmatch(r'animation-name:(k\d+)', g.get('style')).group(1))
+                 for g in self.blocks('dark')]
+        self.assertEqual(sum('scale(' in m for m in moves), len(self.landed))
+        self.assertEqual(sum('translateY(-2px)' in m for m in moves), len(self.cal.active) - len(self.landed))
+        self.assertTrue(all(m.endswith('to{transform:none}') for m in moves))
 
-    def test_blocks_are_hit_by_their_weeks_bolt_during_the_walk(self):
-        tl = self.plan
-        for s in tl.shots:
-            self.assertGreaterEqual(s.kill, tl.fire[s.week])
-            self.assertLessEqual(s.kill, tl.fire[s.week] + R.TRAVEL)
-            self.assertLess(s.kill, tl.walk_end)
-            self.assertGreater(s.drop, tl.walk_end)
-            self.assertLess(s.drop + R.DROP, tl.period)
+    def test_landed_blocks_light_up_at_landing_and_reset(self):
+        svg = self.svgs['dark']
+        self.assertEqual(len(self.lit('dark')), len(self.landed))
+        on = sorted(re.findall(r'@keyframes t\d+\{0%,([\d.]+)%\{opacity:0\}', svg), key=float)
+        self.assertEqual(on, sorted((self.pct(h.land) for h in self.landed), key=float))
+        for u in self.lit('dark'):
+            frames = self.keyframes(svg, re.fullmatch(r'animation-name:(t\d+)', u.get('style')).group(1))
+            self.assertIn('opacity:1', frames)
+            self.assertTrue(frames.endswith('to{opacity:0}'))
+
+    def test_one_coin_per_block_landing(self):
         for theme in self.svgs:
-            self.assertEqual(len(self.bolts(theme)), len({s.week for s in tl.shots}))
+            coins = self.roots[theme].find(f"{SVG}g[@id='fx']").findall(f".//{SVG}g[@class='x cn']")
+            delays = sorted(float(re.search(r'--t:([\d.]+)s', g.get('style')).group(1)) for g in coins)
+            self.assertEqual(delays, sorted(round(h.land, 3) for h in self.landed))
 
-    def test_bolts_fire_in_week_order(self):
-        fire = [self.plan.fire[w] for w in range(self.cal.weeks)]
-        self.assertEqual(fire, sorted(fire))
+    def test_flag_on_busiest_day(self):
+        best = max(self.cal.active, key=lambda d: (d.count, d.date))
+        self.assertEqual(self.plan.flag_day, (best.week, best.weekday, best.level))
+        flags = self.roots['dark'].find(f"{SVG}g[@id='fx']").findall(f"{SVG}use[@class='fg']")
+        self.assertEqual(len(flags), 1)
+        self.assertAlmostEqual(float(flags[0].get('x')), ground(best.week, best.weekday)[0] - 1, places=2)
+
+    def test_hero_reaches_every_apex_and_landing(self):
+        svg = self.svgs['dark']
+        hy = self.keyframes(svg, 'hy')
+        for h in (*self.plan.hops, self.plan.victory):
+            self.assertIn(f'translateY(-{h.apex}px)', hy)
+            self.assertIn(f'{self.pct(h.land)}%', hy)
+        self.assertEqual(self.keyframes(svg, 'ps').count('opacity:0'), len(self.plan.hops) + 1)
 
     def test_empty_days_get_floor_only(self):
         floor = self.roots['dark'].find(f"{SVG}g[@id='floor']").findall(f"{SVG}use[@href='#f']")
@@ -179,8 +201,11 @@ class RenderTests(unittest.TestCase):
     def test_empty_calendar_still_renders(self):
         cal = contributions.parse(with_days(fixture_payload(), lambda d: d.update(
             contributionCount=0, contributionLevel='NONE')))
-        root = ET.fromstring(R.render(cal, 'dark'))
-        self.assertEqual(root.find(f"{SVG}g[@id='blocks']").findall(f'{SVG}use'), [])
+        svg = R.render(cal, 'dark')
+        root = ET.fromstring(svg)
+        self.assertEqual(root.find(f"{SVG}g[@id='blocks']").findall(f'{SVG}g'), [])
+        self.assertEqual(len(root.find(f"{SVG}g[@id='fx']").findall(f"{SVG}use[@class='fg']")), 1)
+        self.assertIn('LEVEL CLEAR', svg)
 
     def test_hero_uses_the_skull_and_red_chest_light(self):
         hero = self.roots['dark'].find(f"{SVG}g[@id='hero']")
@@ -188,7 +213,13 @@ class RenderTests(unittest.TestCase):
         self.assertIn('#eeeee6', fills)       # skull white
         self.assertIn('#de3442', fills)       # chest light
         self.assertIn('#120e1a', fills)       # INK outline
-        self.assertEqual(len(hero.findall(f".//{SVG}g[@class]")), 2 + 4)   # hv, hm + 4 leg frames
+        self.assertNotIn('#787e92', fills)    # no gun
+        classes = {g.get('class') for g in hero.findall(f".//{SVG}g[@class]")}
+        self.assertEqual(classes, {'hv', 'hx', 'hy', 'ps', 'pj'})
+
+    def test_reduced_motion_gets_a_still_frame(self):
+        for svg in self.svgs.values():
+            self.assertIn('@media (prefers-reduced-motion:reduce){*{animation:none!important}', svg)
 
 
 class CliTests(unittest.TestCase):

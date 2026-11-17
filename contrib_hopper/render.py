@@ -1,117 +1,50 @@
-"""Turn a contribution calendar into an animated Expedition-style SVG.
+"""Turn a contribution calendar into an animated Block Hopper SVG.
 
 Layout: every day of the last year is an isometric floor tile; active days are
 raised blocks (busier = taller and brighter). Weeks run down-right, weekdays
-run up-right. The skull hero walks the catwalk along the front edge, and when
-lined up with a week fires a bolt up that column; each block it crosses bursts
-into particles. After the last week the grid rebuilds and the loop repeats.
+run up-right. The skull hero hops across the year, one hop per week onto the
+week's tallest block (route.py works out where and when). A landed block
+squashes, pops a coin and lights up, and the rest of its week bounces. After
+the last week a flag pops up on the busiest day, the hero does a victory hop
+and warps out, the lights fade and the loop restarts.
 
-Animation is pure CSS (no JavaScript): per-block keyframes for the block's
-death and rebuild, and shared keyframes started with `animation-delay` for
-bolts, flashes and particles.
+Animation is pure CSS (no JavaScript). The hero is two nested groups: `hx`
+moves its ground point linearly, `hy` lifts it along an eased arc per hop.
+Per-block keyframes drive the squash/bounce and the lit tops; coins share one
+keyframe started with `animation-delay`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
 from . import pixels as px
 from .character import Character
 from .contributions import Calendar
+from .route import HEIGHTS, INTRO, LANE_D, START_W, ground, lift, plan, tile_xy
 
-HEIGHTS = (2, 4, 7, 10, 14)      # block height per level 0..4 (level 0 = floor slab)
-STEP = 0.2                       # seconds per week while there is something to shoot
-DASH = 0.07                      # seconds per week through empty weeks
-TRAVEL = 0.22                    # seconds for a bolt to cross a whole column
-INTRO, OUTRO = 0.5, 0.5          # warp in / warp out around the walk
-REBUILD, DROP, HOLD = 1.6, 0.35, 1.2
-BURST = 0.55                     # particle flight time
-LANE_D = -1.5                    # hero walks between catwalk rows d=-1 and d=-2
-START_U = -3                     # hero starts three weeks before the first column
-BOLT_END_D = 7                   # bolts fly one row past the last weekday
+__all__ = ['THEMES', 'HEIGHTS', 'ground', 'plan', 'render', 'tile_xy']
+
+CATWALK_FROM = -3                # catwalk strip starts three weeks before the first column
+SQUASH = 0.12                    # landed block: squash and recover, seconds
+BOUNCE = 0.14                    # the rest of the week: 2 px bounce, seconds
+COIN, COIN_RISE = 0.6, 16        # coin flight time (s) and height (px)
+EASE_OUT = 'cubic-bezier(.33,.66,.66,1)'     # take-off -> apex
+EASE_IN = 'cubic-bezier(.33,0,.66,.33)'      # apex -> landing
 
 THEMES = {
     'dark': {
         'floor': (24, 28, 46), 'walk': (40, 44, 66), 'lamp': (90, 200, 220),
         'levels': [(38, 64, 96), (40, 108, 140), (48, 164, 190), (118, 236, 240)],
         'trim': (90, 200, 220), 'text': (150, 226, 236), 'sub': (104, 124, 158),
-        'bolt': ((255, 244, 190), (255, 170, 60)),
+        'lit': (255, 214, 92), 'flag': (240, 80, 90),
     },
     'light': {
         'floor': (222, 228, 238), 'walk': (196, 202, 218), 'lamp': (40, 150, 190),
         'levels': [(160, 212, 230), (92, 182, 212), (40, 140, 182), (20, 92, 150)],
         'trim': (150, 236, 255), 'text': (24, 44, 78), 'sub': (96, 108, 136),
-        'bolt': ((255, 236, 150), (236, 120, 30)),
+        'lit': (255, 190, 50), 'flag': (222, 52, 66),
     },
 }
-
-
-def tile_xy(w: float, d: float) -> tuple[float, float]:
-    """Top-left corner of the ground diamond for week w, weekday d."""
-    return (w + d) * 8, (w - d) * 4
-
-
-def ground(w: float, d: float) -> tuple[float, float]:
-    """Ground point at the centre of (w, d); fractional values allowed."""
-    x, y = tile_xy(w, d)
-    return x + 8, y + 4
-
-
-@dataclass(frozen=True)
-class Shot:
-    week: int
-    weekday: int
-    level: int
-    date: str
-    kill: float          # seconds into the loop when the bolt reaches the block
-    drop: float          # seconds into the loop when the block starts to fall back in
-
-
-@dataclass(frozen=True)
-class Timeline:
-    period: float
-    walk_start: float
-    walk_end: float
-    rebuild_start: float
-    end_u: int
-    align: float         # hero is lined up with week w when u = w - align
-    bolt_start_d: float
-    bolt_height: int
-    fire: dict           # week -> seconds
-    shots: tuple         # Shot per active day
-    stops: tuple         # (u, seconds) at every whole step of the hero's walk
-
-
-def plan(cal: Calendar, character: Character | None = None) -> Timeline:
-    character = character or Character()
-    hero = px.hero_frames(character.colors(), character.head_raster())[0]
-    gun = px.gun(character.colors())
-    tip_dx = 2 + gun.w                       # gun drawn 2 px right of the feet
-    tip_dy = (-hero.h + 1) + (hero.h - 10) + 1
-    align = tip_dx / 16                      # see docs: tip lies on column u + align
-    bolt_start_d = LANE_D + align
-    end_u = max(cal.weeks, 1) + 1
-    busy = {d.week for d in cal.active}
-    # The hero fires at week w while crossing u in [w-1, w]; walk slowly there,
-    # dash through empty weeks.
-    stops, t = [(START_U, INTRO)], INTRO
-    for u in range(START_U, end_u):
-        t += STEP if u + 1 in busy else DASH
-        stops.append((u + 1, t))
-    at = dict(stops)
-    walk_start, walk_end = INTRO, t
-    rebuild_start = walk_end + OUTRO
-    period = rebuild_start + REBUILD + DROP + HOLD
-    fire = {w: at[w - 1] + (1 - align) * (at[w] - at[w - 1]) for w in range(cal.weeks)}
-    span = BOLT_END_D - bolt_start_d
-    last = max(cal.weeks - 1, 1)
-    shots = []
-    for day in cal.active:
-        kill = fire[day.week] + TRAVEL * (day.weekday - bolt_start_d) / span
-        drop = rebuild_start + REBUILD * day.week / last + 0.03 * (6 - day.weekday)
-        shots.append(Shot(day.week, day.weekday, day.level, day.date, kill, drop))
-    return Timeline(period, walk_start, walk_end, rebuild_start, end_u, align,
-                    bolt_start_d, -tip_dy, fire, tuple(shots), tuple(stops))
 
 
 def _num(v: float) -> str:
@@ -122,11 +55,17 @@ def _num(v: float) -> str:
 def render(cal: Calendar, theme: str = 'dark', character: Character | None = None) -> str:
     th = THEMES[theme]
     character = character or Character()
-    tl = plan(cal, character)
+    tl = plan(cal)
     T = tl.period
 
     def pct(t: float) -> str:
         return f'{min(max(t / T * 100, 0), 100):.3f}'.rstrip('0').rstrip('.')
+
+    bounds = [1e9, 1e9, -1e9, -1e9]
+
+    def grow(x0, y0, x1, y1):
+        bounds[0] = min(bounds[0], x0); bounds[1] = min(bounds[1], y0)
+        bounds[2] = max(bounds[2], x1); bounds[3] = max(bounds[3], y1)
 
     # ---------- sprites -------------------------------------------------
     defs = []
@@ -144,16 +83,14 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
         block = px.iso_block(HEIGHTS[level], top, px.shade(top, .68), px.shade(top, .5),
                              trim=th['trim'] if level >= 3 else None)
         defs.append(f'<g id="b{level}">{block.paths()}</g>')
-
-    bounds = [1e9, 1e9, -1e9, -1e9]
-
-    def grow(x0, y0, x1, y1):
-        bounds[0] = min(bounds[0], x0); bounds[1] = min(bounds[1], y0)
-        bounds[2] = max(bounds[2], x1); bounds[3] = max(bounds[3], y1)
+    defs.append(f'<g id="lt">{px.lit_top(th["lit"]).paths()}</g>')
+    defs.append(f'<g id="n0">{px.coin(0).paths()}</g><g id="n1">{px.coin(1).paths()}</g>')
+    flag = px.flag(th['flag'])
+    defs.append(f'<g id="flag">{flag.paths()}</g>')
 
     # ---------- floor and catwalk (static) ---------------------------------
     tiles = [(d.week, d.weekday, 'f') for d in cal.days]
-    for u in range(START_U, tl.end_u + 1):
+    for u in range(CATWALK_FROM, cal.weeks + 2):
         tiles.append((u, -1, 'cl' if u % 4 == 0 else 'c'))
         tiles.append((u, -2, 'c'))
     floor_svg = []
@@ -163,68 +100,85 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
         floor_svg.append(f'<use href="#{ref}" x="{_num(x - 1)}" y="{_num(y - h - 1)}"/>')
         grow(x - 1, y - h - 1, x + 17, y + 11)
 
-    # ---------- blocks: per-block death + rebuild keyframes ----------------
-    css = []
-    blocks_svg = []
-    order = sorted(tl.shots, key=lambda s: (s.week - s.weekday, s.week))
-    for i, s in enumerate(order):
-        h = HEIGHTS[s.level]
-        x, y = tile_xy(s.week, s.weekday)
-        blocks_svg.append(f'<use class="b" href="#b{s.level}" x="{_num(x - 1)}" y="{_num(y - h - 1)}" '
-                          f'style="animation-name:k{i}"/>')
-        grow(x - 1, y - h - 25, x + 17, y + 11)
-        # vanish the instant the bolt arrives, then fall back in solid with gravity
-        css.append(f'@keyframes k{i}{{0%,{pct(s.kill)}%{{opacity:1;transform:none}}'
-                   f'{pct(s.kill + .002)}%,{pct(s.drop)}%{{opacity:0;transform:translateY(-28px)}}'
-                   f'{pct(s.drop + .002)}%{{opacity:1;transform:translateY(-28px);'
-                   f'animation-timing-function:cubic-bezier(.55,0,1,.45)}}'
-                   f'{pct(s.drop + DROP)}%,to{{opacity:1;transform:none}}}}')
+    # ---------- blocks: squash / bounce, and the lit top of landed blocks ------
+    landed = {(h.week, h.weekday) for h in tl.hops if h.level > 0}
+    land_at = {h.week: h.land for h in tl.hops if h.level > 0}
+    css, blocks_svg = [], []
+    order = sorted(cal.active, key=lambda d: (d.week - d.weekday, d.week))
+    for i, day in enumerate(order):
+        h = HEIGHTS[day.level]
+        x, y = tile_xy(day.week, day.weekday)
+        bx, by = _num(x - 1), _num(y - h - 1)
+        t = land_at[day.week]
+        inner = f'<use href="#b{day.level}" x="{bx}" y="{by}"/>'
+        if (day.week, day.weekday) in landed:
+            inner += f'<use class="lt" href="#lt" x="{bx}" y="{by}" style="animation-name:t{i}"/>'
+            css.append(f'@keyframes t{i}{{0%,{pct(t)}%{{opacity:0}}'
+                       f'{pct(t + .02)}%,{pct(tl.reset_start)}%{{opacity:1}}to{{opacity:0}}}}')
+            pose, dur = 'scale(1.08,.8)', SQUASH
+        else:
+            pose, dur = 'translateY(-2px)', BOUNCE
+        css.append(f'@keyframes k{i}{{0%,{pct(t)}%{{transform:none}}{pct(t + dur / 2)}%{{transform:{pose}}}'
+                   f'{pct(t + dur)}%,to{{transform:none}}}}')
+        blocks_svg.append(f'<g class="b" style="animation-name:k{i}">{inner}</g>')
+        grow(x - 1, y - h - 1, x + 17, y + 11)
 
-    # ---------- bursts (shared keyframes, started by --t) --------------------
+    # ---------- coins (shared keyframes, started by --t) and the flag --------
     fx_svg = []
-    for s in order:
-        h = HEIGHTS[s.level]
-        cx, cy = ground(s.week, s.weekday)
-        color = px.hex_color(px.lift(th['levels'][s.level - 1], 30))
-        fx_svg.append(f'<g transform="translate({_num(cx)} {_num(cy - h)})" fill="{color}" '
-                      f'style="--t:{s.kill:.3f}s"><rect class="x f" x="-3" y="-2" width="6" height="4"/>'
-                      f'<rect class="x p1" x="-1" y="-1" width="2" height="2"/>'
-                      f'<rect class="x p2" x="-1" y="-1" width="2" height="2"/>'
-                      f'<rect class="x p3" x="-1" y="-1" width="2" height="2"/>'
-                      f'<rect class="x p4" x="-1" y="-1" width="2" height="2"/></g>')
+    for hop in tl.hops:
+        if hop.level == 0:
+            continue
+        cx, cy = ground(hop.week, hop.weekday)
+        top = cy - HEIGHTS[hop.level]
+        fx_svg.append(f'<g transform="translate({_num(cx - 4)} {_num(top - 14)})">'
+                      f'<g class="x cn" style="--t:{hop.land:.3f}s">'
+                      f'<use class="cf" href="#n0"/><use class="cf c1" href="#n1"/></g></g>')
+        grow(cx - 4, top - 14 - COIN_RISE, cx + 4, top)
+    fw_, fd, fl = tl.flag_day
+    cx, cy = ground(fw_, fd)
+    top = cy - HEIGHTS[fl]
+    fx_svg.append(f'<use class="fg" href="#flag" x="{_num(cx - 1)}" y="{_num(top - flag.h + 3)}"/>')
+    grow(cx - 1, top - flag.h + 3, cx - 1 + flag.w, top + 3)
 
-    # ---------- bolts: one per week that has something to shoot ---------------
-    core, glow = th['bolt']
-    streak = px.Raster(9, 6)
-    for i, (x, y) in enumerate(((0, 4), (1, 4), (2, 3), (3, 3), (4, 2), (5, 2), (6, 1), (7, 1))):
-        streak.set(x, y + 1, glow)
-        streak.set(x, y, core)
-    defs.append(f'<g id="bolt" transform="translate(-8 -2)">{streak.paths()}</g>')
-    dx = (BOLT_END_D - tl.bolt_start_d) * 8
-    dy = -(BOLT_END_D - tl.bolt_start_d) * 4
-    fired = sorted({s.week for s in tl.shots})
-    for w in fired:
-        bx, by = ground(w, tl.bolt_start_d)
-        by -= tl.bolt_height
-        fx_svg.append(f'<g transform="translate({_num(bx)} {_num(by)})" style="--t:{tl.fire[w]:.3f}s">'
-                      f'<g class="x bo"><use href="#bolt"/></g>'
-                      f'<rect class="x mz" x="-2" y="-2" width="4" height="3" fill="{px.hex_color(core)}"/></g>')
+    # ---------- hero: hx = ground motion, hy = arc, ps/pj = pose ---------------
+    stand, jump = px.hero_poses(character.colors(), character.head_raster())
+    fw, fh = stand.w, stand.h
+    sx, sy = ground(START_W, LANE_D)
 
-    # ---------- hero ---------------------------------------------------------
-    frames = px.hero_frames(character.colors(), character.head_raster())
-    gun = px.gun(character.colors())
-    fw, fh = frames[0].w, frames[0].h
-    gx, gy = 2, -fh + 1 + fh - 10                # relative to the feet
-    frames_svg = ''.join(f'<g class="l l{k}">{f.paths()}</g>' for k, f in enumerate(frames))
-    gun_svg = f'<g transform="translate({gx} {gy})">{gun.paths()}</g>'
-    sx, sy = ground(START_U, LANE_D)
-    ex, ey = ground(tl.end_u, LANE_D)
-    grow(sx - fw, sy - fh - 2, ex + gx + gun.w + 2, ey + 4)
-    hero_svg = (f'<g transform="translate({_num(sx)} {_num(sy)})"><g class="hv"><g class="hm">'
-                f'<g transform="translate({-(fw // 2)} {-fh + 1})">{frames_svg}</g>{gun_svg}</g></g></g>')
+    def box(gx, gy, up):
+        grow(gx - fw / 2 - 1, gy - up - fh - 1, gx + fw / 2 + 1, gy + 2)
+
+    def move(dx, dy):
+        return 'none' if (dx, dy) == (0, 0) else f'translate({_num(dx)}px,{_num(dy)}px)'
+
+    def rise(up):
+        return 'none' if up == 0 else f'translateY(-{_num(up)}px)'
+
+    hx, hy = ['0%{transform:none}'], ['0%{transform:none}']
+    ps, pj = ['0%{opacity:1}'], ['0%{opacity:0}']
+    pos, up = (0.0, 0.0), 0
+    box(sx, sy, 0)
+    for hop in (*tl.hops, tl.victory):
+        gx, gy = ground(hop.week, hop.weekday)
+        nxt = (gx - sx, gy - sy)
+        mid = (hop.takeoff + hop.land) / 2
+        hx.append(f'{pct(hop.takeoff)}%{{transform:{move(*pos)}}}{pct(hop.land)}%{{transform:{move(*nxt)}}}')
+        hy.append(f'{pct(hop.takeoff)}%{{transform:{rise(up)};animation-timing-function:{EASE_OUT}}}'
+                  f'{pct(mid)}%{{transform:{rise(hop.apex)};animation-timing-function:{EASE_IN}}}'
+                  f'{pct(hop.land)}%{{transform:{rise(lift(hop.level))}}}')
+        ps.append(f'{pct(hop.takeoff)}%{{opacity:0}}{pct(hop.land)}%{{opacity:1}}')
+        pj.append(f'{pct(hop.takeoff)}%{{opacity:1}}{pct(hop.land)}%{{opacity:0}}')
+        box(gx, gy, hop.apex)
+        pos, up = nxt, lift(hop.level)
+    hx.append(f'to{{transform:{move(*pos)}}}')
+    hy.append(f'to{{transform:{rise(up)}}}')
+    hero_svg = (f'<g transform="translate({_num(sx)} {_num(sy)})"><g class="hv"><g class="hx"><g class="hy">'
+                f'<g transform="translate({-(fw // 2)} {-fh + 1})">'
+                f'<g class="ps">{stand.paths()}</g><g class="pj">{jump.paths()}</g>'
+                f'</g></g></g></g></g>')
 
     # ---------- HUD ----------------------------------------------------------
-    minx, miny, maxx, maxy = (b for b in bounds)
+    minx, miny, maxx, maxy = bounds
     minx, miny, maxx, maxy = minx - 6, miny - 6, maxx + 6, maxy + 6
     width, height = maxx - minx, maxy - miny
     total = f'{cal.total:,}'
@@ -237,58 +191,40 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
            f'<text x="{_num(maxx - 10)}" y="{_num(miny + 16)}" font-size="8" text-anchor="end" '
            f'fill="{px.hex_color(th["sub"])}">EXPEDITION // @{who}</text>'
            f'<text class="sc" x="{_num(maxx - 10)}" y="{_num(miny + 30)}" font-size="11" text-anchor="end" '
-           f'fill="{px.hex_color(th["text"])}">SECTOR CLEAR</text></g>')
+           f'fill="{px.hex_color(th["text"])}">LEVEL CLEAR</text></g>')
 
     # ---------- shared CSS ----------------------------------------------------
-    b = BURST
+    v = tl.victory
+    run = f'{T:.3f}s'
     shared = [
-        f'.b{{animation-duration:{T:.3f}s;animation-iteration-count:infinite;animation-timing-function:linear}}',
-        f'.x{{opacity:0;animation-duration:{T:.3f}s;animation-iteration-count:infinite;'
+        f'.b,.lt{{animation-duration:{run};animation-iteration-count:infinite;animation-timing-function:linear}}',
+        '.b{transform-box:fill-box;transform-origin:50% 100%}.lt{opacity:0}',
+        f'.x{{opacity:0;animation-duration:{run};animation-iteration-count:infinite;'
         'animation-timing-function:linear;animation-delay:var(--t)}',
-        '.f{animation-name:fl;fill:#fff}.p1{animation-name:p1}.p2{animation-name:p2}'
-        '.p3{animation-name:p3}.p4{animation-name:p4;fill:#fff}.bo{animation-name:bo}.mz{animation-name:fl}',
-        f'@keyframes fl{{0%,{pct(.07)}%{{opacity:1}}{pct(.08)}%,to{{opacity:0}}}}',
-        f'@keyframes bo{{0%{{opacity:1;transform:none}}{pct(TRAVEL)}%{{opacity:1;transform:translate({_num(dx)}px,{_num(dy)}px)}}'
-        f'{pct(TRAVEL + .01)}%,to{{opacity:0;transform:translate({_num(dx)}px,{_num(dy)}px)}}}}',
-    ]
-    for name, (mx, my), (ex2, ey2) in (('p1', (-4, -8), (-9, -1)), ('p2', (4, -9), (9, -2)),
-                                       ('p3', (-2, -5), (-5, 5)), ('p4', (2, -11), (5, 3))):
-        shared.append(f'@keyframes {name}{{0%{{opacity:1;transform:none}}'
-                      f'{pct(b / 2)}%{{opacity:1;transform:translate({mx}px,{my}px)}}'
-                      f'{pct(b)}%{{opacity:1;transform:translate({ex2}px,{ey2}px)}}'
-                      f'{pct(b + .01)}%,to{{opacity:0;transform:translate({ex2}px,{ey2}px)}}}}')
-    def at_u(u: int) -> str:
-        n = u - START_U
-        return 'none' if n == 0 else f'translate({n * 8}px,{n * 4}px)'
-
-    runs = []                                       # merge whole steps of equal speed
-    for (u0, t0), (u1, t1) in zip(tl.stops, tl.stops[1:]):
-        if runs and abs((t1 - t0) - runs[-1][4]) < 1e-9:
-            runs[-1][2:4] = [u1, t1]
-        else:
-            runs.append([u0, t0, u1, t1, t1 - t0])
-    walk_kf = ['0%{transform:none}']
-    for u0, t0, u1, _t1, _dur in runs:              # 2 px x 1 px snaps, like a pixel game
-        walk_kf.append(f'{pct(t0)}%{{transform:{at_u(u0)};animation-timing-function:steps({(u1 - u0) * 4},end)}}')
-    walk_kf.append(f'{pct(tl.walk_end)}%,to{{transform:{at_u(tl.end_u)}}}')
-    shared += [
-        f'.hm{{animation:hm {T:.3f}s infinite}}',
-        f'@keyframes hm{{{"".join(walk_kf)}}}',
-        f'.hv{{animation:hv {T:.3f}s steps(1,end) infinite}}',
+        '.cn{animation-name:cn}',
+        f'@keyframes cn{{0%{{opacity:1;transform:none}}{pct(COIN * .6)}%{{opacity:1;transform:translateY(-12px)}}'
+        f'{pct(COIN)}%,to{{opacity:0;transform:translateY(-{COIN_RISE}px)}}}}',
+        '.cf{opacity:0;animation:cf .24s steps(1,end) infinite}.c1{animation-delay:.12s}',
+        '@keyframes cf{0%{opacity:1}50%,to{opacity:0}}',
+        f'.hx{{animation:hx {run} linear infinite}}@keyframes hx{{{"".join(hx)}}}',
+        f'.hy{{animation:hy {run} infinite}}@keyframes hy{{{"".join(hy)}}}',
+        f'.ps{{animation:ps {run} steps(1,end) infinite}}@keyframes ps{{{"".join(ps)}}}',
+        f'.pj{{opacity:0;animation:pj {run} steps(1,end) infinite}}@keyframes pj{{{"".join(pj)}}}',
+        f'.hv{{animation:hv {run} steps(1,end) infinite}}',
         f'@keyframes hv{{0%{{opacity:0}}{pct(INTRO * .4)}%{{opacity:1}}{pct(INTRO * .55)}%{{opacity:0}}'
-        f'{pct(INTRO * .7)}%,{pct(tl.walk_end + .1)}%{{opacity:1}}{pct(tl.walk_end + .2)}%{{opacity:0}}'
-        f'{pct(tl.walk_end + .28)}%{{opacity:1}}{pct(tl.walk_end + .36)}%,to{{opacity:0}}}}',
-        '.l{opacity:0;animation:lg .4s steps(1,end) infinite}.l1{animation-delay:.1s}'
-        '.l2{animation-delay:.2s}.l3{animation-delay:.3s}',
-        '@keyframes lg{0%{opacity:1}25%,to{opacity:0}}',
-        f'.sc{{opacity:0;animation:sc {T:.3f}s steps(1,end) infinite}}',
-        f'@keyframes sc{{0%,{pct(tl.walk_end)}%{{opacity:0}}{pct(tl.walk_end + .01)}%,'
-        f'{pct(tl.rebuild_start + REBUILD + DROP)}%{{opacity:1}}'
-        f'{pct(tl.rebuild_start + REBUILD + DROP + .01)}%,to{{opacity:0}}}}',
-        '@media (prefers-reduced-motion:reduce){*{animation:none!important}.l0,.sc{opacity:1!important}}',
+        f'{pct(INTRO * .7)}%,{pct(v.land + .1)}%{{opacity:1}}{pct(v.land + .2)}%{{opacity:0}}'
+        f'{pct(v.land + .28)}%{{opacity:1}}{pct(v.land + .36)}%,to{{opacity:0}}}}',
+        f'.sc{{opacity:0;animation:sc {run} steps(1,end) infinite}}',
+        f'@keyframes sc{{0%,{pct(tl.hop_end)}%{{opacity:0}}{pct(tl.hop_end + .01)}%,'
+        f'{pct(tl.reset_start)}%{{opacity:1}}{pct(tl.reset_start + .01)}%,to{{opacity:0}}}}',
+        f'.fg{{opacity:0;animation:fg {run} linear infinite}}',
+        f'@keyframes fg{{0%,{pct(tl.hop_end)}%{{opacity:0;transform:translateY(6px)}}'
+        f'{pct(tl.hop_end + .15)}%,{pct(tl.reset_start)}%{{opacity:1;transform:none}}'
+        f'to{{opacity:0;transform:none}}}}',
+        '@media (prefers-reduced-motion:reduce){*{animation:none!important}.sc,.fg{opacity:1!important}}',
     ]
 
-    title = f'{who}: {total} contributions in the last year, blasted by the Expedition skull hero'
+    title = f'{who}: {total} contributions in the last year, hopped across by the Expedition skull hero'
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{_num(minx)} {_num(miny)} {_num(width)} {_num(height)}" '
         f'width="{_num(width * 2)}" height="{_num(height * 2)}" shape-rendering="crispEdges" '
@@ -298,7 +234,7 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
         f'<defs>{"".join(defs)}</defs>'
         f'<g id="floor">{"".join(floor_svg)}</g>'
         f'<g id="blocks">{"".join(blocks_svg)}</g>'
-        f'<g id="fx">{"".join(fx_svg)}</g>'
         f'<g id="hero">{hero_svg}</g>'
+        f'<g id="fx">{"".join(fx_svg)}</g>'
         f'{hud}</svg>\n'
     )

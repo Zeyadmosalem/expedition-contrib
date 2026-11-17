@@ -50,12 +50,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(hero, C.Character())
         self.assertEqual(R.render(self.cal, 'dark', hero), R.render(self.cal, 'dark'))
 
-    def test_suit_light_and_gun_colours(self):
-        hero = C.from_dict({'suit': '#961a2a', 'light': 'FFD060', 'gun': '#3a3f55'})
+    def test_suit_and_light_colours(self):
+        hero = C.from_dict({'suit': '#961a2a', 'light': 'FFD060'})
         fills = hero_fills(R.render(self.cal, 'dark', hero))
-        for new in ('#961a2a', '#ffd060', '#3a3f55'):
+        for new in ('#961a2a', '#ffd060'):
             self.assertIn(new, fills)
-        for old in ('#24263e', '#de3442', '#787e92'):        # Expedition defaults are gone
+        for old in ('#24263e', '#de3442'):                    # Expedition defaults are gone
             self.assertNotIn(old, fills)
         self.assertIn('#eeeee6', fills)                       # the skull head is unchanged
 
@@ -120,8 +120,7 @@ class PictureHeadTests(unittest.TestCase):
         fills = hero_fills(svg)
         self.assertNotIn('#eeeee6', fills)                    # no skull white
         self.assertIn('#e0a0a0', fills)                       # posterized face colour
-        shots = R.plan(self.cal, hero).shots
-        self.assertEqual(len(shots), len(self.cal.active))    # every block still gets shot
+        self.assertEqual(len(R.plan(self.cal).hops), self.cal.weeks)   # still one hop per week
 
     def test_saved_pixel_head_round_trips(self):
         out = self.dir / 'character.png'
