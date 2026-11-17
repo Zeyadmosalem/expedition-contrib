@@ -1,0 +1,15 @@
+# Colours of the contribution animation. Edit, commit, and the next workflow
+# run (on push, daily, or "Run workflow" in the Actions tab) redraws it.
+
+# "crimson" matches the profile README; "cyan" is the original Expedition look.
+preset = "crimson"
+
+# Optional: override any colour for GitHub's dark or light theme. Anything left
+# out comes from the preset. Keys: floor, catwalk, lamp, levels (four colours,
+# quietest to busiest), trim, text, sub, lit, flag.
+[dark]
+# levels = ["#5a1422", "#961a2a", "#d12a3c", "#ef4e5c"]
+# floor = "#160c10"
+
+[light]
+# text = "#400e18"
