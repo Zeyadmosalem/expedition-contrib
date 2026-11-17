@@ -55,8 +55,11 @@ class FileTests(unittest.TestCase):
     def test_empty_settings_mean_the_default_preset(self):
         self.assertEqual(TH.from_dict({}), TH.palettes())
 
-    def test_repo_theme_toml_is_the_default(self):
-        self.assertEqual(TH.load(REPO / 'theme.toml'), TH.palettes())
+    def test_repo_theme_toml_loads(self):
+        pal = TH.load(REPO / 'theme.toml')          # the user's file: any valid customization passes
+        self.assertEqual(list(pal), ['dark', 'light'])
+        for theme in TH.THEMES:
+            self.assertEqual(set(pal[theme]), set(TH.KEYS))
 
     def test_overrides_merge_on_top_of_the_preset(self):
         pal = TH.from_dict({'preset': 'cyan', 'dark': {
