@@ -202,6 +202,7 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
                 fx_svg.append(f'<g transform="translate({_num(gx + 4)} {_num(gy - zh - 6)})">'
                               f'<use class="x zq" href="#zz" style="--t:{m.start + .2 + i * ZEE_GAP:.3f}s"/></g>')
             grow(gx + 4, gy - zh - 6 - 12, gx + 4 + 6 + 4, gy)
+            grow(gx - zw // 2, gy - zh + 1, gx - zw // 2 + zw, gy + 1)
     hx.append(f'to{{transform:{move(*pos)}}}')
     hy.append(f'to{{transform:{rise(up)}}}')
     hero_svg = (f'<g transform="translate({_num(sx)} {_num(sy)})"><g class="hv"><g class="hx"><g class="hy">'
