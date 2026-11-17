@@ -28,6 +28,7 @@ CATWALK_FROM = -3                # catwalk strip starts three weeks before the f
 SQUASH = 0.12                    # landed block: squash and recover, seconds
 BOUNCE = 0.14                    # the rest of the week: 2 px bounce, seconds
 COIN, COIN_RISE = 0.6, 16        # coin flight time (s) and height (px)
+COIN_LIFT = 36                  # coin starts this far above the block top: clear of the hero's head
 EASE_OUT = 'cubic-bezier(.33,.66,.66,1)'     # take-off -> apex
 EASE_IN = 'cubic-bezier(.33,0,.66,.33)'      # apex -> landing
 
@@ -130,10 +131,10 @@ def render(cal: Calendar, theme: str = 'dark', character: Character | None = Non
             continue
         cx, cy = ground(hop.week, hop.weekday)
         top = cy - HEIGHTS[hop.level]
-        fx_svg.append(f'<g transform="translate({_num(cx - 4)} {_num(top - 14)})">'
+        fx_svg.append(f'<g transform="translate({_num(cx - 4)} {_num(top - COIN_LIFT)})">'
                       f'<g class="x cn" style="--t:{hop.land:.3f}s">'
                       f'<use class="cf" href="#n0"/><use class="cf c1" href="#n1"/></g></g>')
-        grow(cx - 4, top - 14 - COIN_RISE, cx + 4, top)
+        grow(cx - 4, top - COIN_LIFT - COIN_RISE, cx + 4, top)
     fw_, fd, fl = tl.flag_day
     cx, cy = ground(fw_, fd)
     top = cy - HEIGHTS[fl]
